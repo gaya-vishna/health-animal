@@ -1,0 +1,309 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --forest-deep: #0b1912;
+    --forest-mid: #132b20;
+    --wood-border: #1e1109;
+    --wood-fill: #3b2314;
+    --wood-light: #5a3720;
+    --wood-gold: #e1b12c;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--forest-deep);
+    color: #f1f2f6;
+    font-family: 'Pixelify Sans', 'Outfit', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+
+  #root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  /* Vintage Pixel Border Utility */
+  .pixel-box {
+    border: 3px solid #1a0e07;
+    box-shadow: 
+      inset 2px 2px 0px rgba(255, 255, 255, 0.15),
+      inset -2px -2px 0px rgba(0, 0, 0, 0.4),
+      0 4px 0px rgba(0, 0, 0, 0.4);
+  }
+
+  .pixel-box-wood {
+    background: linear-gradient(180deg, #442716 0%, #2b170c 100%);
+    border: 3px solid #150b06;
+    box-shadow: 
+      inset 2px 2px 0px #683d23,
+      inset -2px -2px 0px #130a05,
+      0 4px 0px rgba(0, 0, 0, 0.5);
+  }
+
+  .pixel-box-gold {
+    background: linear-gradient(180deg, #6c4b1d 0%, #462e0f 100%);
+    border: 3px solid #1a0e07;
+    box-shadow: 
+      inset 2px 2px 0px #c79743,
+      inset -2px -2px 0px #241606,
+      0 3px 0px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Currency HUD badge (top of screen) */
+  .pixel-badge {
+    background: #1e1109;
+    border: 3px solid #3c2415;
+    border-radius: 9999px;
+    box-shadow: 
+      inset 0 2px 4px rgba(0,0,0,0.6),
+      0 2px 0 #100804;
+  }
+
+  /* Vitality / Stat Bar Recessed Track */
+  .pixel-bar-track {
+    background: #141f23;
+    border: 3px solid #0f1619;
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.8),
+      0 2px 0px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Pixel Speech Bubble */
+  .pixel-speech-bubble {
+    position: relative;
+    background: #ffffff;
+    color: #1a1a1a;
+    border: 3px solid #1a1a1a;
+    border-radius: 12px;
+    box-shadow: 0 4px 0 #0f0f0f;
+  }
+
+  .pixel-speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 24px;
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 10px solid #ffffff;
+    z-index: 2;
+  }
+
+  .pixel-speech-bubble::before {
+    content: '';
+    position: absolute;
+    bottom: -14px;
+    left: 23px;
+    width: 0;
+    height: 0;
+    border-left: 9px solid transparent;
+    border-right: 9px solid transparent;
+    border-top: 12px solid #1a1a1a;
+    z-index: 1;
+  }
+
+  /* Bottom Food Inventory Dock */
+  .pixel-food-dock {
+    background: rgba(18, 30, 24, 0.85);
+    backdrop-filter: blur(8px);
+    border: 3px solid #233e31;
+    border-radius: 9999px;
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.5),
+      0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .pixel-food-slot {
+    background: #ffffff;
+    border: 3px solid #1a2c22;
+    box-shadow: 
+      inset 0 -3px 0 rgba(0,0,0,0.15),
+      0 3px 0 rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .pixel-food-slot:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  /* Retro Arcade Push Button */
+  .pixel-btn-action {
+    background: linear-gradient(180deg, #589b71 0%, #2f6945 100%);
+    border: 3px solid #142e1f;
+    box-shadow: 
+      inset 2px 2px 0px #82c49b,
+      inset -2px -2px 0px #1c422c,
+      0 4px 0px #0b1a11;
+    color: #ffffff;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .pixel-btn-action:active {
+    transform: translateY(3px);
+    box-shadow: 
+      inset 2px 2px 0px #1c422c,
+      0 1px 0px #0b1a11;
+  }
+
+  .pixel-btn-wood {
+    background: linear-gradient(180deg, #7c4826 0%, #4f2d16 100%);
+    border: 3px solid #251409;
+    box-shadow: 
+      inset 2px 2px 0px #a46439,
+      inset -2px -2px 0px #311b0c,
+      0 4px 0px #130a04;
+    color: #fcebd9;
+  }
+
+  .pixel-btn-wood:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0px #130a04;
+  }
+
+  .pixel-btn-gold {
+    background: linear-gradient(180deg, #f5cd44 0%, #d49a18 100%);
+    border: 3px solid #3c2409;
+    box-shadow: 
+      inset 2px 2px 0px #fce899,
+      inset -2px -2px 0px #976b0d,
+      0 4px 0px #241605;
+    color: #271604;
+  }
+
+  .pixel-btn-gold:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0px #241605;
+  }
+
+  /* Safe areas */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0.5rem);
+  }
+}
+
+/* Scanline / Pixel Screen Effect */
+.pixel-crt {
+  position: relative;
+}
+
+.pixel-crt::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
+  background-size: 100% 4px;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* Custom Scrollbar for Pixel panels */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #101c15;
+}
+::-webkit-scrollbar-thumb {
+  background: #39634b;
+  border: 1px solid #14271c;
+}
+
+
+/* --- Hebrew / RTL: the pixel fonts have no Hebrew glyphs, so use Heebo and bump tiny sizes --- */
+html[lang="he"] body,
+html[lang="he"] .font-pixel,
+html[lang="he"] .font-pixelify,
+html[lang="he"] button,
+html[lang="he"] input,
+html[lang="he"] textarea,
+html[lang="he"] select {
+  font-family: 'Heebo', system-ui, sans-serif !important;
+  letter-spacing: 0 !important;
+}
+html[lang="he"] [class*="text-[8px]"]  { font-size: 10px !important; }
+html[lang="he"] [class*="text-[9px]"]  { font-size: 11px !important; }
+html[lang="he"] [class*="text-[10px]"] { font-size: 12px !important; }
+html[lang="he"] [class*="text-[11px]"] { font-size: 13px !important; }
+html[lang="he"] .text-xs { font-size: 13px !important; }
+/* keep numbers/emails/passwords left-to-right inside RTL pages */
+input[type="email"], input[type="password"], input[type="number"], input[type="time"] { direction: ltr; text-align: start; }
+html[dir="rtl"] input[type="email"], html[dir="rtl"] input[type="password"] { text-align: right; }
+
+html[lang="he"] .font-pixel { font-weight: 600; }
+
+/* Sloth eating: paws swing up to the mouth. Plain CSS (pivot at the shoulder, in SVG units). */
+@keyframes arm-eat-l { 0%, 100% { transform: rotate(-88deg); } 50% { transform: rotate(-100deg); } }
+@keyframes arm-eat-r { 0%, 100% { transform: rotate(88deg); } 50% { transform: rotate(100deg); } }
+.arm-eat-l { transform-box: view-box; transform-origin: 40px 65px; animation: arm-eat-l 0.4s ease-in-out infinite; }
+.arm-eat-r { transform-box: view-box; transform-origin: 95px 65px; animation: arm-eat-r 0.4s ease-in-out infinite; }
+
+input[autocomplete="username"] { direction: ltr; text-align: start; }
+html[dir="rtl"] input[autocomplete="username"] { text-align: right; }
+
+/* Sloth drinking: paws hold the glass at the mouth and tilt slowly. */
+@keyframes arm-drink-l { 0%, 100% { transform: rotate(-84deg); } 50% { transform: rotate(-93deg); } }
+@keyframes arm-drink-r { 0%, 100% { transform: rotate(84deg); } 50% { transform: rotate(93deg); } }
+.arm-drink-l { transform-box: view-box; transform-origin: 40px 65px; animation: arm-drink-l 1s ease-in-out infinite; }
+.arm-drink-r { transform-box: view-box; transform-origin: 95px 65px; animation: arm-drink-r 1s ease-in-out infinite; }
+
+/* --- Phones --- */
+/* iOS Safari zooms the page when a field under 16px is focused, and stays zoomed.
+   (-webkit-touch-callout only exists on iOS, so Android keeps the design sizes.) */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="file"]), textarea, select { font-size: 16px !important; }
+}
+@media (max-width: 640px) {
+  /* the 8-9px labels are too small to read on a phone (Hebrew has its own, larger sizes) */
+  html:not([lang="he"]) [class*="text-[8px]"] { font-size: 10px; }
+  html:not([lang="he"]) [class*="text-[9px]"], html:not([lang="he"]) [class*="text-[10px]"] { font-size: 11px; }
+}
+/* Narrow phones (Galaxy S22 and friends are 360px wide): the pixel font is very wide, so step every
+   size down one notch - otherwise short labels like "7 days" or "WEIGH-IN!" wrap and collide. */
+@media (max-width: 400px) {
+  html:not([lang="he"]) .font-pixel[class*="text-[8px]"],
+  html:not([lang="he"]) .font-pixel[class*="text-[9px]"],
+  html:not([lang="he"]) .font-pixel[class*="text-[10px]"],
+  html:not([lang="he"]) .font-pixel [class*="text-[8px]"],
+  html:not([lang="he"]) .font-pixel [class*="text-[9px]"],
+  html:not([lang="he"]) .font-pixel [class*="text-[10px]"] { font-size: 9px; }
+  html:not([lang="he"]) .font-pixel[class*="text-[11px]"] { font-size: 10px; }
+  html:not([lang="he"]) .font-pixel.text-xs { font-size: 10px; }
+  html:not([lang="he"]) .font-pixel.text-sm { font-size: 12px; }
+  html:not([lang="he"]) .font-pixel.text-base { font-size: 13px; }
+  html:not([lang="he"]) .font-pixel.text-lg { font-size: 15px; }
+  html:not([lang="he"]) .font-pixel.text-xl { font-size: 17px; }
+  .hide-narrow { display: none; }
+}
+/* Grows the tappable area around a small control without changing how it looks. */
+.tap-area { position: relative; }
+.tap-area::after { content: ""; position: absolute; inset: -12px -6px; }

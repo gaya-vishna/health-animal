@@ -1,0 +1,94 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+}
+
+model UserConfig {
+  id                     String   @id @default(uuid())
+  userId                 String?  @unique
+  heightCm               Float    @default(165)
+  startWeightKg          Float    @default(70)
+  targetWeightKg         Float    @default(60)
+  targetDate             DateTime @default(now())
+  dailyCaloricTargetMin  Int      @default(1450)
+  dailyCaloricTargetMax  Int      @default(1550)
+  mealTimesJson          String   @default("[\"09:30\",\"13:30\",\"18:00\",\"21:00\"]")
+  bedtimeReminderTime    String   @default("23:00")
+  sex                    String?
+  birthYear              Int?
+  slothName              String?
+  setupDone              Boolean? // null = account from before onboarding existed = done
+  notificationSoundsJson String   @default("{\"meal\":\"bell\",\"bedtime\":\"winddown\",\"workout\":\"tick\",\"checkin\":\"harp\"}")
+  updatedAt              DateTime @updatedAt
+}
+
+model AvatarState {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  energyLevel Int      @default(100)
+  currentMood String   @default("chill")
+  streakDays  Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model Recipe {
+  id              String     @id @default(uuid())
+  userId          String?
+  name            String
+  baseCalsPer100g Float
+  proteinPer100g  Float      @default(0)
+  servingGrams    Float? // one typical serving, so people log "1 serving" instead of grams
+  notes           String?
+  createdAt       DateTime   @default(now())
+  DailyLog        DailyLog[]
+}
+
+model DailyLog {
+  id                 String   @id @default(uuid())
+  userId             String?
+  date               DateTime @default(now())
+  mealType           String   @default("snack")
+  inputMode          String   @default("recipe")
+  recipeId           String?
+  weightGram         Float?
+  imageUrl           String?
+  rawText            String?
+  aiEstimatedCalsMin Int?
+  aiEstimatedCalsMax Int?
+  aiBreakdown        String?
+  waterMl            Int      @default(0)
+  proteinHit         Boolean  @default(false)
+  recipe             Recipe?  @relation(fields: [recipeId], references: [id])
+  createdAt          DateTime @default(now())
+}
+
+model WorkoutLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  date        DateTime @default(now())
+  type        String
+  durationMin Int
+  notes       String?
+}
+
+model WeeklyCheckin {
+  id            String   @id @default(uuid())
+  userId        String?
+  weekStartDate DateTime
+  weightKg      Float
+  avgDailyCals  Int
+  aiReflection  String
+  createdAt     DateTime @default(now())
+}

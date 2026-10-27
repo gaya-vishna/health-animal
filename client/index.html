@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#132b20" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Zero-shame Tamagotchi nutrition & lifestyle copilot" />
+    <title>Health Animal 🐾</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // If nothing has appeared after 12s, show a message instead of a blank screen.
+      setTimeout(function () {
+        var r = document.getElementById('root');
+        if (r && !r.children.length) {
+          r.innerHTML = '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#0b1912;color:#f5f6fa;font-family:system-ui,sans-serif">' +
+            '<div style="font-size:44px">📡</div>' +
+            '<div style="font-size:16px;font-weight:600">Taking too long to load</div>' +
+            '<div style="font-size:13px;opacity:.75;max-width:280px">Check your connection, then reload.<br>הטעינה נמשכת זמן רב. בדקו את החיבור ורעננו.</div>' +
+            '<button onclick="location.reload()" style="padding:12px 22px;border-radius:12px;border:0;background:#e0a526;color:#2b170c;font-weight:700;font-size:15px">Reload / טעינה מחדש</button></div>';
+        }
+      }, 12000);
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

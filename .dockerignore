@@ -1,0 +1,11 @@
+**/node_modules
+client/dist
+**/.env
+**/.env.*
+**/.env.local
+*.db
+*.db-journal
+.git
+mobile
+docs
+*.apk

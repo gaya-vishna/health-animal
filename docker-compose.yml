@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Bind to your LAN/VPN address, or 127.0.0.1 behind a reverse proxy. Never expose this to the public internet.
+      - "0.0.0.0:8090:5000"
+    env_file:
+      - .env   # copy server/.env.example to ./.env (GEMINI_API_KEY, JWT_SECRET, APP_KEY...); stays on the server
+    environment:
+      TZ: ${TZ:-UTC}   # so "today" starts at local midnight, e.g. TZ=Europe/London in .env or your shell
+      DATABASE_URL: file:/data/health.db
+    volumes:
+      - health_data:/data
+      # Optional: serve an Android APK you built yourself at /download/<file>
+      # - ./downloads:/app/server/downloads:ro
+
+volumes:
+  health_data:

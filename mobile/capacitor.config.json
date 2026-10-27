@@ -1,0 +1,19 @@
+{
+  "appId": "app.healthanimal.family",
+  "appName": "Health Animal",
+  "webDir": "../client/dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "backgroundColor": "#0b1912",
+    "adjustMarginsForEdgeToEdge": "force"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_sloth",
+      "iconColor": "#e0a526"
+    }
+  }
+}

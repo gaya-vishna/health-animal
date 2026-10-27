@@ -1,0 +1,35 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# dependencies / build output
+node_modules/
+dist/
+client/dist/
+
+# local databases
+*.db
+*.db-journal
+
+# built Android apps and signing material
+*.apk
+server/downloads/
+downloads/
+*.keystore
+*.jks
+keystore.properties
+local.properties
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/app/src/main/assets/public/
+
+# misc
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+scratch/
+coverage/
+server/uploads/

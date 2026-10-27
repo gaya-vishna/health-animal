@@ -1,0 +1,20 @@
+Health Animal
+Copyright (c) 2026 Gaya Vishna (https://github.com/gaya-vishna)
+
+Scope of the license
+The PolyForm Noncommercial License 1.0.0 in the LICENSE file covers the
+source code only.
+
+Reserved rights
+All rights are reserved to:
+- the names "Health Animal" and "Slomo"
+- the sloth artwork, including the app icons, the mood images in
+  mobile/android/app/src/main/res/drawable-nodpi and the icons in client/public
+- the notification sounds (mobile/android/app/src/main/res/raw)
+
+PolyForm grants no trademark rights. You may not use these names or this
+artwork to identify your own products or services.
+
+Commercial use
+Commercial licenses are available from the author. Contact via GitHub:
+https://github.com/gaya-vishna
