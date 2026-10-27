@@ -5,7 +5,7 @@ import MascotWidget from '../components/MascotWidget';
 import FoodInventoryDock from '../components/FoodInventoryDock';
 import QuickWidgets from '../components/QuickWidgets';
 import LogMealModal from '../components/LogMealModal';
-import WeighInModal from '../components/WeighInModal';
+import WeighInModal, { isWeighInSnoozed } from '../components/WeighInModal';
 import { useSearchParams } from 'react-router-dom';
 import { playSound } from '../utils/audioHaptics';
 import { api } from '../utils/api';
@@ -37,6 +37,8 @@ export default function DashboardView() {
     }
   }, [searchParams, setSearchParams]);
   const [weighInOpen, setWeighInOpen] = useState(false);
+  const [snoozed, setSnoozed] = useState(isWeighInSnoozed);
+  const [comebackGreeting, setComebackGreeting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [journalOpen, setJournalOpen] = useState(false);
   const [isDancing, setIsDancing] = useState(false);
@@ -66,6 +68,7 @@ export default function DashboardView() {
       const checkinInfo = await checkinRes.json();
 
       setDashboard(dashData);
+      if (dashData && dashData.comeback) setComebackGreeting(true);
       setRecipes(recipeData.recipes || []);
       if (checkinInfo && !checkinInfo.error) {
         setCheckinData(checkinInfo);
@@ -214,7 +217,8 @@ export default function DashboardView() {
           totalWaterMl={dashboard.totalWaterMl}
           proteinHit={dashboard.proteinHit}
           energyLevel={dashboard.energyLevel}
-          streakDays={dashboard.streakDays}
+          streakDays={dashboard.totalDays ?? dashboard.streakDays}
+          goalDirection={dashboard.goalDirection || goalDirection}
           onOpenLogModal={() => setLogOpen(true)}
         />
 
@@ -230,7 +234,11 @@ export default function DashboardView() {
             isDancing={isDancing}
             eatingFood={eatingFood}
             isDrinking={isDrinking}
-            needsCheckin={checkinData.needsCheckin}
+            needsCheckin={checkinData.needsCheckin && !snoozed}
+            xp={dashboard.xp || 0}
+            level={dashboard.level || 1}
+            comeback={comebackGreeting}
+            onComebackShown={() => setComebackGreeting(false)}
             goalDirection={goalDirection}
             progressPercent={checkinData.progressPercent}
             weightProgress={checkinData.progressKg}
@@ -297,8 +305,8 @@ export default function DashboardView() {
         </div>
 
         {/* Zero Shame Daily Footer */}
-        <div className="text-center font-pixel text-[9px] text-emerald-500/40 py-1">
-          {t('GRAVITY RESETS DAILY · ZERO SHAME · 🦥')}
+        <div className="text-center font-pixel text-[9px] text-emerald-300/80 py-1">
+          {t('A FRESH LEAF EVERY DAY · 🦥')}
         </div>
       </div>
 
@@ -321,6 +329,7 @@ export default function DashboardView() {
         goalWeight={checkinData.goalWeight}
         goalDirection={goalDirection}
         progressPercent={checkinData.progressPercent}
+        onSnooze={() => setSnoozed(true)}
         onWeightUpdated={() => {
           fetchDashboard();
         }}

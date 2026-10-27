@@ -40,6 +40,15 @@ model AvatarState {
   energyLevel Int      @default(100)
   currentMood String   @default("chill")
   streakDays  Int      @default(0)
+  totalDays   Int      @default(0)
+  lastLogDay  String?
+  xp          Int      @default(0)
+  level       Int      @default(1)
+  logXpDay    String?
+  logXpToday  Int      @default(0)
+  tapXpDay    String?
+  tapXpToday  Int      @default(0)
+  comebackDay String?
   updatedAt   DateTime @updatedAt
 }
 

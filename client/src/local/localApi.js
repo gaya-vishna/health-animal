@@ -22,6 +22,15 @@ const DEFAULT_CONFIG = {
   notificationSoundsJson: { meal: 'bell', bedtime: 'winddown', workout: 'tick', checkin: 'harp' },
 };
 
+const AVATAR_DEFAULTS = {
+  totalDays: 0, lastLogDay: null, xp: 0, level: 1,
+  logXpDay: null, logXpToday: 0, tapXpDay: null, tapXpToday: 0, comebackDay: null,
+};
+const LOG_XP = { meal: 10, water: 3, protein: 5, weighin: 10 };
+const LOG_XP_CAP = 40;
+const TAP_XP = { pet: 5, statue: 10, flowers: 3 };
+const TAP_XP_CAP = 15;
+
 // First launch: default settings and starter recipes in the phone's language.
 // A collection that failed to load is given in-memory defaults only; it is never written.
 async function ensureSeed() {
@@ -32,7 +41,7 @@ async function ensureSeed() {
     const targetDate = new Date(now.getTime() + 12 * 7 * 86400000).toISOString();
     await put('config', { ...DEFAULT_CONFIG, setupDone: false, targetDate, updatedAt: now.toISOString() });
   }
-  if (missing('avatar')) await put('avatar', { streakDays: 0, energyLevel: 100, currentMood: 'chill' });
+  if (missing('avatar')) await put('avatar', { streakDays: 0, energyLevel: 100, currentMood: 'chill', ...AVATAR_DEFAULTS });
   if (missing('recipes')) {
     const now = new Date().toISOString();
     await put('recipes', starterRecipes(getLang()).map((r) => ({ ...r, id: newId(), createdAt: now })));
@@ -49,6 +58,48 @@ const dayKey = (d) => {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 };
 const clock = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+// Always returns a full avatar record (older installs get the new fields filled in).
+const getAvatar = () => ({ ...AVATAR_DEFAULTS, ...(read('avatar') || {}) });
+
+// Optional createdAt (ISO), clamped to [now-48h, now]. Invalid means now.
+function clampCreatedAt(value) {
+  const now = Date.now();
+  const t = value ? new Date(value).getTime() : NaN;
+  if (isNaN(t)) return new Date(now).toISOString();
+  return new Date(Math.min(now, Math.max(now - 48 * 3600000, t))).toISOString();
+}
+
+// Counts a log: days together by the REAL current day (never the backdated createdAt), plus capped log XP.
+async function recordLogProgress(kind) {
+  const av = getAvatar();
+  const today = dayKey(new Date());
+  const next = { ...av };
+  if (av.lastLogDay !== today) {
+    next.totalDays = (av.totalDays || 0) + 1;
+    next.streakDays = next.totalDays;
+    next.lastLogDay = today;
+  }
+  const used = av.logXpDay === today ? av.logXpToday || 0 : 0;
+  const gain = Math.max(0, Math.min(LOG_XP[kind] || 0, LOG_XP_CAP - used));
+  next.logXpDay = today;
+  next.logXpToday = used + gain;
+  next.xp = (av.xp || 0) + gain;
+  next.level = Math.floor(next.xp / 100) + 1;
+  await write('avatar', next);
+}
+
+async function avatarTap(kind) {
+  if (!TAP_XP[kind]) return fail(400, 'Unknown tap kind');
+  const av = getAvatar();
+  const today = dayKey(new Date());
+  const used = av.tapXpDay === today ? av.tapXpToday || 0 : 0;
+  const gained = Math.max(0, Math.min(TAP_XP[kind], TAP_XP_CAP - used));
+  const xp = (av.xp || 0) + gained;
+  const level = Math.floor(xp / 100) + 1;
+  await write('avatar', { ...av, xp, level, tapXpDay: today, tapXpToday: used + gained });
+  return ok({ xp, level, gained });
+}
+
 const recipeById = (id) => (read('recipes') || []).find((r) => r.id === id);
 
 function logCalories(log) {
@@ -59,7 +110,7 @@ function logCalories(log) {
 }
 
 // ---------------------------------------------------------------- dashboard
-function dashboard() {
+async function dashboard() {
   const config = read('config');
   const start = startOfToday();
   const today = read('logs').filter((l) => new Date(l.createdAt) >= start);
@@ -82,6 +133,19 @@ function dashboard() {
   const goalDirection = goalDirectionOf(config.startWeightKg || 70, config.targetWeightKg || 60);
   const currentMood = hour >= 22 ? 'sleepy' : isOverComfort(goalDirection, totalCals, targetMax) ? 'snacking' : energyLevel >= 90 && totalCals >= targetMin ? 'glow' : 'chill';
   const times = Array.isArray(config.mealTimesJson) ? config.mealTimesJson : DEFAULT_CONFIG.mealTimesJson;
+  const today0 = dayKey(new Date());
+  let av = getAvatar();
+  let awayDays = 0;
+  if (av.lastLogDay && av.lastLogDay !== today0) {
+    const [y, m, d] = av.lastLogDay.split('-').map(Number);
+    awayDays = Math.max(0, Math.round((startOfToday() - new Date(y, m - 1, d)) / 86400000));
+  }
+  const comeback = awayDays >= 3 && av.comebackDay !== today0;
+  if (comeback) {
+    const xp = (av.xp || 0) + 20;
+    av = { ...av, comebackDay: today0, xp, level: Math.floor(xp / 100) + 1 };
+    await write('avatar', av);
+  }
   return ok({
     totalCals: Math.round(totalCals),
     totalWaterMl,
@@ -91,7 +155,12 @@ function dashboard() {
     energyLevel,
     currentMood,
     goalDirection,
-    streakDays: read('avatar')?.streakDays || 0,
+    streakDays: av.totalDays || 0,
+    totalDays: av.totalDays || 0,
+    xp: av.xp || 0,
+    level: av.level || 1,
+    awayDays,
+    comeback,
     bedtimeReminderTime: config.bedtimeReminderTime || '23:00',
     lastMealAt,
     loggedMealTypes,
@@ -101,7 +170,7 @@ function dashboard() {
 }
 
 // ---------------------------------------------------------------- logging
-async function addLog(fields) {
+async function addLog(fields, progressKind = 'meal') {
   const log = {
     id: newId(),
     createdAt: new Date().toISOString(),
@@ -117,6 +186,7 @@ async function addLog(fields) {
     ...fields,
   };
   await write('logs', [...read('logs'), log]);
+  await recordLogProgress(progressKind);
   return log;
 }
 
@@ -135,6 +205,7 @@ async function logMeal(b) {
     aiEstimatedCalsMin: min || null,
     aiEstimatedCalsMax: max || null,
     proteinHit: b.proteinHit || false,
+    createdAt: clampCreatedAt(b.createdAt),
   });
   return ok({ success: true, log, calculatedCals: Math.round(logCalories(log)) || null });
 }
@@ -364,6 +435,7 @@ async function route(method, path, query, body) {
   switch (true) {
     case key === 'GET auth/me': return ok({ user: { id: 'local', username: 'local', name: null } });
     case key === 'GET dashboard': return dashboard();
+    case key === 'POST avatar/tap': return avatarTap(body.kind);
     case key === 'GET recipes': return ok({ recipes: [...read('recipes')].sort((a, b) => a.name.localeCompare(b.name)) });
     case key === 'POST recipes': return createRecipe(body);
     case method === 'PUT' && seg[0] === 'recipes': return updateRecipe(seg[1], body);
@@ -375,11 +447,11 @@ async function route(method, path, query, body) {
     case key === 'POST log/meal': return logMeal(body);
     case key === 'POST log/water': {
       const ml = body.ml ?? 250;
-      return ok({ success: true, added: ml, log: await addLog({ mealType: 'water', waterMl: ml }) });
+      return ok({ success: true, added: ml, log: await addLog({ mealType: 'water', waterMl: ml, createdAt: clampCreatedAt(body.createdAt) }, 'water') });
     }
     case key === 'POST log/protein': {
       const hit = body.hit ?? true;
-      return ok({ success: true, proteinHit: hit, log: await addLog({ mealType: 'protein-check', proteinHit: hit }) });
+      return ok({ success: true, proteinHit: hit, log: await addLog({ mealType: 'protein-check', proteinHit: hit, createdAt: clampCreatedAt(body.createdAt) }, 'protein') });
     }
     case key === 'POST log/workout': {
       const w = { id: newId(), date: new Date().toISOString(), type: body.type || 'cardio', durationMin: body.durationMin || 30, notes: body.notes || null };
@@ -402,6 +474,7 @@ async function route(method, path, query, body) {
       if (!weight) return fail(400, 'Valid weightKg is required');
       const c = { id: newId(), createdAt: new Date().toISOString(), weekStartDate: new Date().toISOString(), weightKg: weight };
       await write('checkins', [...read('checkins'), c]);
+      await recordLogProgress('weighin');
       const config = read('config');
       return ok({ success: true, checkin: c, currentWeight: weight, startWeight: config.startWeightKg, goalWeight: config.targetWeightKg });
     }

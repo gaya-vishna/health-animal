@@ -14,9 +14,10 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         createChannels();
         super.onCreate(savedInstanceState);
-        // The app's pixel layout is designed at 100% text size; Android's system font-size setting
-        // would otherwise scale every label (Samsung phones often ship with a larger default).
-        getBridge().getWebView().getSettings().setTextZoom(100);
+        // Respect the system font-size setting (people who need larger text get it), but cap it at 150%
+        // so the pixel layout does not break, and never go below 100%.
+        int fontScalePercent = Math.round(getResources().getConfiguration().fontScale * 100);
+        getBridge().getWebView().getSettings().setTextZoom(Math.max(100, Math.min(150, fontScalePercent)));
     }
 
     // Channel sound/vibration are frozen once a channel is created. To change them, bump the _v1

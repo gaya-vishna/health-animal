@@ -12,7 +12,10 @@ import { setSlothName } from './slothName';
 
 export const isNativeApp = () => Capacitor.isNativePlatform();
 
-const DAYS = 14;
+const DAYS = 60; // plan this far ahead; the lapse taper below keeps the real count small
+const IDLE_STOP = 60; // after this many idle days we stop reminding altogether
+const COMEBACK_TIME = '13:00';
+const SNACK_TIMES = ['11:00', '16:30'];
 const WATER_TIMES = ['11:00', '14:00', '17:00'];
 const MEALS = [
   { type: 'morning', idx: 0 },
@@ -26,6 +29,7 @@ const KIND = {
   water: { channelId: 'ha_water_v1', sound: 'sloth_water.wav', largeIcon: 'sloth_thirsty' },
   test: { channelId: 'ha_hello_v1', sound: 'sloth_hello.wav', largeIcon: 'sloth_happy' },
 };
+KIND.comeback = KIND.test;
 const DEFAULT_MEAL_TIMES = ['09:30', '13:30', '18:00', '21:00'];
 
 const PREFS_KEY = 'ha_reminders';
@@ -48,7 +52,7 @@ export function setReminderPrefs(prefs) {
 }
 
 // Stable id per calendar day + slot, so "today's lunch" can be cancelled on its own.
-// slot: 0-2 meals, 3 bedtime, 4-6 water
+// slot: 0-2 meals, 3 bedtime, 4-6 water, 7-8 snacks, 9 comeback
 const idFor = (day, slot) => ((day.getMonth() + 1) * 100 + day.getDate()) * 10 + slot;
 
 async function ensurePermission() {
@@ -76,22 +80,18 @@ async function localizeChannels() {
   }
 }
 
-export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = []) {
-  if (!isNativeApp()) return;
-  if (!(await ensurePermission())) return;
-  await localizeChannels();
+// Is the snack nudge on? An explicit choice wins; otherwise it defaults ON only for people who are gaining.
+export const snacksOn = (prefs, goalDirection) => (typeof prefs.snacks === 'boolean' ? prefs.snacks : goalDirection === 'gain');
 
-  const pending = await LocalNotifications.getPending();
-  if (pending.notifications.length) {
-    await LocalNotifications.cancel({ notifications: pending.notifications.map((n) => ({ id: n.id })) });
-  }
-
-  const prefs = getReminderPrefs();
-  const times = Array.isArray(mealTimes) && mealTimes.length ? mealTimes : DEFAULT_MEAL_TIMES;
-  const now = new Date();
+// Pure planner: which one-off notifications to schedule from `now`. No Capacitor calls, so it can be tested.
+// Lapse taper, where idle = awayDays + d for the future day d: under 3 idle days the normal schedule; 3-6 one
+// gentle midday hello a day; 7-60 one a week; beyond 60 nothing. The hello never mentions missed days.
+export function buildSchedule({ prefs, times, bedtime, loggedTodayTypes = [], awayDays = 0, goalDirection = null, now = new Date() }) {
   const list = [];
-
+  const snacks = snacksOn(prefs, goalDirection);
   for (let d = 0; d < DAYS; d++) {
+    const idle = awayDays + d;
+    if (idle > IDLE_STOP) break;
     const day = new Date(now);
     day.setDate(now.getDate() + d);
     const add = (slot, hhmm, kind, msg, extra) => {
@@ -103,15 +103,36 @@ export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [
       list.push({ id: idFor(day, slot), title: msg.title, body: msg.body, schedule: { at, allowWhileIdle: true }, ...KIND[kind], smallIcon: 'ic_stat_sloth', extra });
     };
 
+    if (idle >= 3) {
+      const anyOn = prefs.meals || prefs.bedtime || prefs.water || snacks; // all reminders off means none, hello included
+      if (anyOn && (idle <= 6 || (idle - 7) % 7 === 0)) add(9, COMEBACK_TIME, 'comeback', pickMessage('comeback', day), { open: 'home' });
+      continue;
+    }
     if (prefs.meals) {
       MEALS.forEach((meal, slot) => {
         if (d === 0 && loggedTodayTypes.includes(meal.type)) return; // already fed today
         add(slot, times[meal.idx], 'meal', pickMessage(meal.type === 'morning' ? 'breakfast' : meal.type, day), { open: 'feed' });
       });
     }
+    if (snacks) SNACK_TIMES.forEach((hhmm, i) => add(7 + i, hhmm, 'meal', pickMessage('snack', day, i), { open: 'feed' }));
     if (prefs.bedtime) add(3, bedtime, 'bedtime', pickMessage('bedtime', day), { open: 'home' });
     if (prefs.water) WATER_TIMES.forEach((hhmm, i) => add(4 + i, hhmm, 'water', pickMessage('water', day, i), { open: 'home' }));
   }
+  return list;
+}
+
+export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [], { awayDays = 0, goalDirection = null } = {}) {
+  if (!isNativeApp()) return;
+  if (!(await ensurePermission())) return;
+  await localizeChannels();
+
+  const pending = await LocalNotifications.getPending();
+  if (pending.notifications.length) {
+    await LocalNotifications.cancel({ notifications: pending.notifications.map((n) => ({ id: n.id })) });
+  }
+
+  const times = Array.isArray(mealTimes) && mealTimes.length ? mealTimes : DEFAULT_MEAL_TIMES;
+  const list = buildSchedule({ prefs: getReminderPrefs(), times, bedtime, loggedTodayTypes, awayDays, goalDirection });
 
   if (list.length) {
     await LocalNotifications.schedule({ notifications: list });
@@ -135,7 +156,8 @@ export async function refreshReminders() {
     setSlothName(settings.slothName);
     await syncReminders(
       { mealTimes: settings.mealTimesJson, bedtime: settings.bedtimeReminderTime },
-      dash.loggedMealTypes || []
+      dash.loggedMealTypes || [],
+      { awayDays: dash.awayDays || 0, goalDirection: dash.goalDirection || null }
     );
   } catch (err) {
     console.warn('Could not refresh reminders:', err);

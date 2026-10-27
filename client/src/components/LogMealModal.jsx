@@ -18,6 +18,26 @@ const EATEN = [
 const SERVING_CHIPS = [0.5, 1, 1.5, 2];
 const DEFAULT_SERVING_G = 150; // for saved recipes that have no serving size yet
 
+// When was it eaten? Sent as createdAt (the server/local store clamp it to the last 48h).
+const WHEN = ['now', 'earlier', 'yesterday'];
+const USUAL_HOUR = { morning: [8, 30], lunch: [13, 0], dinner: [19, 0], snack: [16, 0] };
+function whenToIso(when, mealType) {
+  const now = new Date();
+  if (when === 'earlier') {
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 1, 0, 0);
+    return new Date(Math.max(now.getTime() - 3 * 3600 * 1000, startOfDay.getTime())).toISOString();
+  }
+  if (when === 'yesterday') {
+    const [h, m] = USUAL_HOUR[mealType] || [13, 0];
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  }
+  return undefined; // now: the server stamps it
+}
+
 const mealTypeNow = () => {
   const h = new Date().getHours();
   return h < 11 ? 'morning' : h < 16 ? 'lunch' : h < 22 ? 'dinner' : 'snack';
@@ -35,7 +55,7 @@ function Segmented({ options, value, onChange }) {
             type="button"
             onClick={() => onChange(o.value)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-[10px] text-[10px] font-pixel transition-colors cursor-pointer ${
-              active ? 'bg-[#3a2212] text-amber-200 border border-amber-500/50' : 'text-amber-200/45 border border-transparent hover:text-amber-200/80'
+              active ? 'bg-[#3a2212] text-amber-200 border border-amber-500/50' : 'text-amber-200/70 border border-transparent hover:text-amber-200/80'
             }`}
           >
             {o.icon}
@@ -48,7 +68,7 @@ function Segmented({ options, value, onChange }) {
 }
 const field =
   'w-full bg-[#120a05] border-2 border-[#3f2413] text-amber-100 rounded-xl px-3 py-2 font-pixel text-xs focus:outline-none focus:border-amber-500';
-const label = 'text-[10px] font-pixel text-amber-300/70';
+const label = 'text-[10px] font-pixel text-amber-300/85';
 
 export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }) {
   const [tab, setTab] = useState('describe'); // 'describe' | 'photo' | 'saved'
@@ -79,9 +99,42 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
   const [aiError, setAiError] = useState(null);
   const [saveAsRecipe, setSaveAsRecipe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [when, setWhen] = useState('now'); // 'now' | 'earlier' | 'yesterday'
+  const [recent, setRecent] = useState([]);
 
   const cameraRef = useRef();
   const galleryRef = useRef();
+
+  // Up to 5 distinct recent meals, newest first, for one-tap re-logging
+  useEffect(() => {
+    if (!isOpen) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await api('/api/history?days=14');
+        const data = await res.json();
+        const seen = new Set();
+        const list = [];
+        for (const day of data.days || []) {
+          for (const m of [...(day.meals || [])].reverse()) {
+            const name = (m.name || '').trim();
+            const key = name.toLowerCase();
+            if (!name || seen.has(key)) continue;
+            seen.add(key);
+            list.push({ name, calories: m.calories, mealType: m.mealType });
+            if (list.length >= 5) break;
+          }
+          if (list.length >= 5) break;
+        }
+        if (alive) setRecent(list);
+      } catch {
+        if (alive) setRecent([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isOpen]);
 
   // ---- what the AI is asked, per tab ----
   const aiBody =
@@ -122,6 +175,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
     setSelectedRecipe(''); setServings(1); setUseGrams(false); setGramsInput('');
     setAiResult(null); setAiError(null); setSaveAsRecipe(false);
     setSubmitting(false); setAnalyzing(false);
+    setWhen('now');
   }
 
   function handleClose() {
@@ -172,6 +226,27 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
   const post = (path, body) =>
     api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  async function logAgain(item) {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await post('/api/log/meal', {
+        mealType: mealType,
+        name: item.name,
+        calories: item.calories,
+        source: 'ai_text',
+        createdAt: whenToIso(when, mealType),
+      });
+      playSound.meal();
+      onLogged?.(mealType);
+      handleClose();
+    } catch (err) {
+      console.error(err);
+      setAiError(t('Failed to calculate nutrition.'));
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!canSubmit) return;
     setSubmitting(true);
@@ -184,6 +259,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
           source: 'recipe_exact',
           recipeId: selectedRecipe,
           weightGrams: savedGrams,
+          createdAt: whenToIso(when, mealType),
         });
       } else {
         const r = aiResult || (await estimate());
@@ -199,6 +275,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
           calories: cals,
           source: tab === 'photo' ? 'ai_vision' : 'ai_text',
           notes: r.hiddenTrapsNotes,
+          createdAt: whenToIso(when, mealType),
         });
         if (prot >= 25) await post('/api/log/protein', { hit: true });
         if (saveAsRecipe && baseName) {
@@ -283,6 +360,36 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
               {/* Meal type (pre-set from the time of day) + the three ways to report */}
               <Segmented value={mealType} onChange={setMealType} options={['morning', 'lunch', 'dinner', 'snack'].map((k) => ({ value: k, label: t(k) }))} />
 
+              {/* When was it? */}
+              <div className="space-y-1">
+                <label className={label}>{t('When?')}</label>
+                <Segmented
+                  value={when}
+                  onChange={setWhen}
+                  options={WHEN.map((k) => ({ value: k, label: k === 'now' ? t('Now') : k === 'earlier' ? t('Earlier today') : t('Yesterday') }))}
+                />
+              </div>
+
+              {/* Recent meals: one tap logs it again */}
+              {recent.length > 0 && (
+                <div className="space-y-1">
+                  <label className={label}>{t('Recent')}</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recent.map((r) => (
+                      <button
+                        key={r.name}
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => logAgain(r)}
+                        className="min-h-11 px-3 rounded-full border border-amber-500/40 bg-[#1a0e07] text-amber-100 font-pixel text-[10px] max-w-full truncate cursor-pointer hover:bg-[#25150c] disabled:opacity-50"
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <Segmented
                 value={tab}
                 onChange={setTab}
@@ -339,7 +446,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       </select>
                     </div>
                     {unit !== 'grams' && <Segmented value={size} onChange={setSize} options={SIZES.map((sz) => ({ value: sz, label: t(sz) }))} />}
-                    <p className="text-[9px] font-pixel text-amber-300/50">{t('No idea of the weight? The AI knows typical sizes.')}</p>
+                    <p className="text-[9px] font-pixel text-amber-300/75">{t('No idea of the weight? The AI knows typical sizes.')}</p>
                   </div>
 
                   <button type="button" onClick={() => setShowDetails((v) => !v)} className="tap-area text-[10px] font-pixel text-emerald-400 underline cursor-pointer">
@@ -452,7 +559,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       ) : (
                         <>
                           <Segmented value={servings} onChange={setServings} options={SERVING_CHIPS.map((n) => ({ value: n, label: String(n) }))} />
-                          <p className="text-[9px] font-pixel text-amber-300/60">{t('1 serving ≈ {g}g', { g: Math.round(servingG) })}</p>
+                          <p className="text-[9px] font-pixel text-amber-300/75">{t('1 serving ≈ {g}g', { g: Math.round(servingG) })}</p>
                         </>
                       )}
                       <button type="button" onClick={() => setUseGrams((v) => !v)} className="tap-area text-[10px] font-pixel text-emerald-400 underline cursor-pointer">

@@ -7,6 +7,16 @@ import { t } from '../utils/i18n';
 import { useSlothName } from '../utils/slothName';
 import { goalDirectionOf } from '../utils/goal';
 
+const SNOOZE_KEY = 'ha_weighin_snooze_until';
+
+// True while the person has asked for no weigh-in nudges ("Not this week").
+export function isWeighInSnoozed() {
+  try {
+    return Date.now() < Number(localStorage.getItem(SNOOZE_KEY) || 0);
+  } catch {
+    return false;
+  }
+}
 
 export default function WeighInModal({
   isOpen,
@@ -16,6 +26,7 @@ export default function WeighInModal({
   goalWeight = 70,
   goalDirection,
   onWeightUpdated,
+  onSnooze,
 }) {
   const slothName = useSlothName();
   const [weight, setWeight] = useState(String(currentWeight || 75));
@@ -61,6 +72,14 @@ export default function WeighInModal({
     } finally {
       setSavingStart(false);
     }
+  }
+
+  function handleSnooze() {
+    try {
+      localStorage.setItem(SNOOZE_KEY, String(Date.now() + 7 * 86400000));
+    } catch { /* storage unavailable: just close */ }
+    onSnooze?.();
+    onClose();
   }
 
   async function handleSubmit(e) {
@@ -199,6 +218,13 @@ export default function WeighInModal({
                   className="pixel-btn-wood flex-1 py-2.5 rounded-xl font-pixel text-xs"
                 >
                   {t('LATER')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSnooze}
+                  className="pixel-btn-wood flex-1 py-2.5 rounded-xl font-pixel text-xs"
+                >
+                  {t('Not this week')}
                 </button>
                 <button
                   type="submit"

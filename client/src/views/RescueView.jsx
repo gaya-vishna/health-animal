@@ -184,8 +184,8 @@ export default function RescueView() {
             <div className="text-3xl font-pixel text-amber-200 tabular-nums">
               {remaining} <span className="text-xs text-amber-400">{t('KCAL')}</span>
             </div>
-            <div className="text-[10px] font-pixel text-amber-200/50 mt-0.5">
-              {gaining && remaining === 0 ? t('Target reached! Extra bites are a bonus 💪') : t('Zero shame · Fuel ready')}
+            <div className="text-[10px] font-pixel text-amber-200/75 mt-0.5">
+              {gaining && remaining === 0 ? t('Target reached! Extra bites are a bonus 💪') : t('Ideas for your next bite')}
             </div>
           </div>
           <div className="text-4xl filter drop-shadow">

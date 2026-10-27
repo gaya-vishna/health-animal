@@ -250,9 +250,9 @@ html[lang="he"] select {
   font-family: 'Heebo', system-ui, sans-serif !important;
   letter-spacing: 0 !important;
 }
-html[lang="he"] [class*="text-[8px]"]  { font-size: 10px !important; }
-html[lang="he"] [class*="text-[9px]"]  { font-size: 11px !important; }
-html[lang="he"] [class*="text-[10px]"] { font-size: 12px !important; }
+html[lang="he"] [class*="text-[8px]"]  { font-size: 13px !important; }
+html[lang="he"] [class*="text-[9px]"]  { font-size: 13px !important; }
+html[lang="he"] [class*="text-[10px]"] { font-size: 13px !important; }
 html[lang="he"] [class*="text-[11px]"] { font-size: 13px !important; }
 html[lang="he"] .text-xs { font-size: 13px !important; }
 /* keep numbers/emails/passwords left-to-right inside RTL pages */

@@ -10,6 +10,7 @@ export default function AiKeySettings() {
   const [draft, setDraft] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     loadAiKey().then(setSaved);
@@ -44,9 +45,20 @@ export default function AiKeySettings() {
 
   return (
     <div className="pixel-box-wood p-4 rounded-2xl space-y-3">
-      <h2 className="font-pixel text-xs text-amber-300 flex items-center gap-1.5">
-        <span>✨</span> {t('AI ESTIMATES (OPTIONAL)')}
-      </h2>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 cursor-pointer"
+      >
+        <span className="font-pixel text-xs text-amber-300 flex items-center gap-1.5 text-start">
+          <span>✨</span> {t('Advanced: AI estimates (optional)')}
+        </span>
+        <span className="text-amber-300 text-xs shrink-0" aria-hidden="true">{open ? '▲' : '▼'}</span>
+      </button>
+      <p className="text-[10px] font-pixel text-amber-200/70">{t('Optional, the app works fine without it.')}</p>
+      {open && (
+        <>
       <p className="text-[10px] font-pixel text-amber-200/70">
         {t('Paste your own free Gemini API key. It stays only on this phone; food text and photos go directly to Google.')}
       </p>
@@ -88,6 +100,8 @@ export default function AiKeySettings() {
       </div>
       {msg && <p className="text-[10px] font-pixel text-emerald-300">{msg}</p>}
       <p className="text-[9px] font-pixel text-amber-300/50">{using}</p>
+        </>
+      )}
     </div>
   );
 }

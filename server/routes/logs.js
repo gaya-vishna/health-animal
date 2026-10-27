@@ -6,6 +6,56 @@ const { goalDirectionOf, isOverComfort } = require('../lib/goal');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+
+// ---- progress (days together, XP, level). Nothing here ever resets or subtracts.
+const LOG_XP = { meal: 10, water: 3, protein: 5, weighin: 10 };
+const LOG_XP_CAP = 40;
+const TAP_XP = { pet: 5, statue: 10, flowers: 3 };
+const TAP_XP_CAP = 15;
+
+function dayKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Accepts an optional ISO createdAt, clamped to [now-48h, now]. Invalid means now.
+function clampCreatedAt(value) {
+  const now = new Date();
+  if (!value) return now;
+  const t = new Date(value);
+  if (isNaN(t.getTime())) return now;
+  const min = new Date(now.getTime() - 48 * 3600000);
+  return t < min ? min : t > now ? now : t;
+}
+
+async function getAvatar(userId) {
+  return prisma.avatarState.upsert({ where: { userId }, update: {}, create: { userId } });
+}
+
+// Counts a log: days together (by the REAL current day) and capped log XP.
+async function recordLogProgress(userId, kind) {
+  try {
+    const av = await getAvatar(userId);
+    const today = dayKey();
+    const data = {};
+    if (av.lastLogDay !== today) {
+      data.totalDays = (av.totalDays || 0) + 1;
+      data.streakDays = data.totalDays;
+      data.lastLogDay = today;
+    }
+    const usedToday = av.logXpDay === today ? av.logXpToday : 0;
+    const gain = Math.max(0, Math.min(LOG_XP[kind] || 0, LOG_XP_CAP - usedToday));
+    data.logXpDay = today;
+    data.logXpToday = usedToday + gain;
+    if (gain) {
+      data.xp = (av.xp || 0) + gain;
+      data.level = Math.floor(data.xp / 100) + 1;
+    }
+    await prisma.avatarState.update({ where: { userId }, data });
+  } catch (err) {
+    console.error('progress update failed', err.message);
+  }
+}
+
 // Helper: get today's date range (midnight to midnight)
 function getTodayRange() {
   const start = new Date();
@@ -30,7 +80,6 @@ router.get('/dashboard', async (req, res) => {
   try {
     const { start, end } = getTodayRange();
     const config = await prisma.userConfig.findUnique({ where: { userId: req.userId } });
-    const avatar = await prisma.avatarState.findUnique({ where: { userId: req.userId } });
 
     const todayLogs = await prisma.dailyLog.findMany({
       where: { userId: req.userId, createdAt: { gte: start, lte: end } },
@@ -96,11 +145,25 @@ router.get('/dashboard', async (req, res) => {
       } catch (e) {}
     }
 
-    // Update avatar mood live
-    await prisma.avatarState.update({
-      where: { userId: req.userId },
-      data: { energyLevel, currentMood },
-    });
+    // Progress: days together, XP, level, and the one-time comeback greeting
+    const today = dayKey();
+    let av = await getAvatar(req.userId);
+    let awayDays = 0;
+    if (av.lastLogDay && av.lastLogDay !== today) {
+      const [y, m, d] = av.lastLogDay.split('-').map(Number);
+      const last = new Date(y, m - 1, d);
+      const now0 = new Date();
+      now0.setHours(0, 0, 0, 0);
+      awayDays = Math.max(0, Math.round((now0 - last) / 86400000));
+    }
+    const comeback = awayDays >= 3 && av.comebackDay !== today;
+    const avData = { energyLevel, currentMood };
+    if (comeback) {
+      avData.comebackDay = today;
+      avData.xp = (av.xp || 0) + 20;
+      avData.level = Math.floor(avData.xp / 100) + 1;
+    }
+    av = await prisma.avatarState.update({ where: { userId: req.userId }, data: avData });
 
     res.json({
       totalCals: Math.round(totalCals),
@@ -111,7 +174,12 @@ router.get('/dashboard', async (req, res) => {
       energyLevel,
       currentMood,
       goalDirection,
-      streakDays: avatar?.streakDays || 0,
+      streakDays: av.totalDays || 0,
+      totalDays: av.totalDays || 0,
+      xp: av.xp || 0,
+      level: av.level || 1,
+      awayDays,
+      comeback,
       bedtimeReminderTime: config?.bedtimeReminderTime || '23:00',
       lastMealAt,
       loggedMealTypes,
@@ -141,6 +209,7 @@ router.post('/log/meal', async (req, res) => {
       aiEstimatedCalsMax,
       aiBreakdown,
       proteinHit,
+      createdAt: createdAtBody,
     } = req.body;
 
     const weightGram = weightGramBody ?? weightGrams;
@@ -173,8 +242,10 @@ router.post('/log/meal', async (req, res) => {
         aiBreakdown: aiBreakdown ? JSON.stringify(aiBreakdown) : null,
         waterMl: 0,
         proteinHit: proteinHit || false,
+        createdAt: clampCreatedAt(createdAtBody),
       },
     });
+    await recordLogProgress(req.userId, 'meal');
 
     res.json({
       success: true,
@@ -197,8 +268,10 @@ router.post('/log/water', async (req, res) => {
         mealType: 'water',
         inputMode: 'recipe',
         waterMl: ml,
+        createdAt: clampCreatedAt(req.body.createdAt),
       },
     });
+    await recordLogProgress(req.userId, 'water');
     res.json({ success: true, added: ml, log });
   } catch (err) {
     console.error('❌ Log water error:', err);
@@ -216,8 +289,10 @@ router.post('/log/protein', async (req, res) => {
         mealType: 'protein-check',
         inputMode: 'recipe',
         proteinHit: hit,
+        createdAt: clampCreatedAt(req.body.createdAt),
       },
     });
+    await recordLogProgress(req.userId, 'protein');
     res.json({ success: true, proteinHit: hit, log });
   } catch (err) {
     console.error('❌ Log protein error:', err);
@@ -332,6 +407,7 @@ router.post('/checkin/weight', async (req, res) => {
         aiReflection: `Weigh-in logged: ${weight}kg`,
       },
     });
+    await recordLogProgress(req.userId, 'weighin');
 
     res.json({
       success: true,
@@ -343,6 +419,28 @@ router.post('/checkin/weight', async (req, res) => {
   } catch (err) {
     console.error('❌ Log checkin weight error:', err);
     res.status(500).json({ error: 'Failed to record checkin weight', details: err.message });
+  }
+});
+
+// POST /api/avatar/tap  { kind: 'pet' | 'statue' | 'flowers' }
+router.post('/avatar/tap', async (req, res) => {
+  try {
+    const kind = req.body && req.body.kind;
+    if (!TAP_XP[kind]) return res.status(400).json({ error: 'Unknown tap kind' });
+    const av = await getAvatar(req.userId);
+    const today = dayKey();
+    const used = av.tapXpDay === today ? av.tapXpToday : 0;
+    const gained = Math.max(0, Math.min(TAP_XP[kind], TAP_XP_CAP - used));
+    const xp = (av.xp || 0) + gained;
+    const level = Math.floor(xp / 100) + 1;
+    await prisma.avatarState.update({
+      where: { userId: req.userId },
+      data: { xp, level, tapXpDay: today, tapXpToday: used + gained },
+    });
+    res.json({ xp, level, gained });
+  } catch (err) {
+    console.error('Avatar tap error:', err);
+    res.status(500).json({ error: 'Failed to record tap', details: err.message });
   }
 });
 

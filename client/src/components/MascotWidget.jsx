@@ -4,6 +4,7 @@ import { playSound } from '../utils/audioHaptics';
 import { t } from '../utils/i18n';
 import { isOverComfort } from '../utils/goal';
 import { useSlothName } from '../utils/slothName';
+import { api } from '../utils/api';
 
 const CRAVING_ITEMS = ['🍃', '🍉', '🍎', '🍣', '🥥', '🥑', '✨', '💤'];
 
@@ -21,6 +22,10 @@ export default function MascotWidget({
   progressPercent = 0, // 0-100 progress toward the goal (maintain: 100 = in band)
   eatingFood = null, // emoji of the food being eaten right now (null = not eating)
   needsCheckin = false,
+  xp = 0, // total XP from the dashboard (never resets)
+  level = 1,
+  comeback = false, // one-time welcome-back greeting
+  onComebackShown,
   onOpenWeighIn,
   onTaunt,
   onXpGained,
@@ -35,9 +40,22 @@ export default function MascotWidget({
   const [statueActive, setStatueActive] = useState(false);
 
   // Gamification: Sloth Friendship Level & XP
-  const [friendshipXp, setFriendshipXp] = useState(35);
-  const [friendshipLevel, setFriendshipLevel] = useState(1);
+  // XP and level come from the dashboard; taps update them from the server's reply
+  const [progress, setProgress] = useState({ xp, level });
+  useEffect(() => {
+    setProgress((prev) => (xp >= prev.xp ? { xp, level } : prev));
+  }, [xp, level]);
+  const friendshipXp = progress.xp % 100;
+  const friendshipLevel = progress.level;
   const [levelUpBanner, setLevelUpBanner] = useState(false);
+
+  // One-time welcome-back greeting (never mentions missed days)
+  useEffect(() => {
+    if (!comeback) return;
+    setBubbleText(t('I saved your spot 🍃 Welcome back!'));
+    setTimeout(() => setBubbleText(null), 6000);
+    onComebackShown?.();
+  }, [comeback]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 1. Calculate time, elapsed meal duration & human-like schedule
   const now = new Date();
@@ -64,7 +82,7 @@ export default function MascotWidget({
     defaultSpeech = t('Glug glug glug! 💧');
   } else if (isOverComfort(goalDirection, totalCals, targetMax)) {
     state = 'food_coma';
-    defaultSpeech = t('Ooof... too full! I am staying on the floor 😵💤');
+    defaultSpeech = t('Cozy-full day. Tomorrow we glide again 🍃');
   } else if (isDancing) {
     state = 'dancing';
     defaultSpeech = t('YUMMY! Happy sloth dance! 💃✨');
@@ -95,8 +113,8 @@ export default function MascotWidget({
       defaultSpeech = t('Good morning! Time for some breakfast fuel? ☕🥐');
     } else {
       // Late morning and still haven't eaten breakfast
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! I need breakfast fuel!! 🥞😱');
+      state = 'dozing';
+      defaultSpeech = t('{name} is dozing, a snack whenever you are ready 🍃', { name: slothName });
     }
   } else if (currentHour >= 11.5 && currentHour < 13.0) {
     // MIDDAY / PRE-LUNCH (11:30 - 13:00)
@@ -104,8 +122,8 @@ export default function MascotWidget({
       state = 'chill';
       defaultSpeech = t('Breakfast held up well! Lunch soon? 🦥🍃');
     } else if (totalCals === 0) {
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! Noon already and no food!! 🍎😱');
+      state = 'dozing';
+      defaultSpeech = t('{name} is dozing, a snack whenever you are ready 🍃', { name: slothName });
     } else {
       state = 'chill';
       defaultSpeech = t('Tummy is ready for lunchtime! 🍱');
@@ -120,8 +138,8 @@ export default function MascotWidget({
       defaultSpeech = t('It is lunchtime! What are we eating? 🍱');
     } else {
       // Past 14:30 without lunch or recent food
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! I need lunch fuel!! 🥪😱');
+      state = 'dozing';
+      defaultSpeech = t('{name} is dozing, a snack whenever you are ready 🍃', { name: slothName });
     }
   } else if (currentHour >= 16.0 && currentHour < 19.0) {
     // AFTERNOON WINDOW (16:00 - 19:00)
@@ -129,8 +147,8 @@ export default function MascotWidget({
       state = 'chill';
       defaultSpeech = t('Basking in the warm afternoon glade 🍃✨');
     } else {
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! {name} needs fuel!! 🍉😱', { name: slothName });
+      state = 'dozing';
+      defaultSpeech = t('{name} is dozing, a snack whenever you are ready 🍃', { name: slothName });
     }
   } else if (currentHour >= 19.0 && currentHour < 22.0) {
     // DINNER WINDOW (19:00 - 22:00)
@@ -141,21 +159,29 @@ export default function MascotWidget({
       state = 'chill';
       defaultSpeech = t('Evening roll call! What is for dinner? 🍲');
     } else {
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! Starving for dinner!! 🍛😱');
+      state = 'dozing';
+      defaultSpeech = t('{name} is dozing, a snack whenever you are ready 🍃', { name: slothName });
     }
   } else {
     // NIGHT / SLEEP WINDOW (22:00+)
     if (totalCals === 0) {
-      state = 'screaming';
-      defaultSpeech = t('FEED MEEE!! We forgot to eat all day!! 😱');
+      state = 'dozing';
+      defaultSpeech = t("Quiet day. Tomorrow's a fresh leaf 🌙");
     } else {
       state = 'chill';
       defaultSpeech = t('Campfire is warm... getting sleepy 🌙💤');
     }
   }
 
-  if (needsCheckin && state !== 'screaming' && state !== 'dancing') {
+  // Gainers: gentle bridge lines while under the minimum target, late in the day (no pressure)
+  const underGainTarget = goalDirection === 'gain' && totalCals < targetMin;
+  if (underGainTarget && currentHour >= 16 && ['chill', 'dozing'].includes(state)) {
+    defaultSpeech = currentHour >= 20
+      ? t('Even a tiny bedtime snack counts. Something gentle? 🍌')
+      : t('A shake or a handful of nuts? Tiny bites count, no rush 🥜');
+  }
+
+  if (needsCheckin && state !== 'dancing') {
     defaultSpeech = t('Time for weekly weigh-in! ⚖️');
   }
 
@@ -164,19 +190,30 @@ export default function MascotWidget({
 
   const currentCraving = CRAVING_ITEMS[cravingIndex % CRAVING_ITEMS.length];
 
-  function addXp(amount, label) {
-    const newXp = friendshipXp + amount;
-    if (newXp >= 100) {
-      setFriendshipXp(newXp - 100);
-      setFriendshipLevel((prev) => prev + 1);
-      setLevelUpBanner(true);
-      playSound.levelUp();
-      setTimeout(() => setLevelUpBanner(false), 3000);
-    } else {
-      setFriendshipXp(newXp);
+  // Taps are rewarded by the server (daily cap). Hearts and reactions always show; the XP number only when XP was given.
+  async function addXp(kind, label) {
+    let gained = 0;
+    try {
+      const res = await api('/api/avatar/tap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      const data = res && res.ok !== false ? await res.json() : null;
+      if (data && typeof data.xp === 'number') {
+        gained = data.gained || 0;
+        if (data.level > progress.level) {
+          setLevelUpBanner(true);
+          playSound.levelUp();
+          setTimeout(() => setLevelUpBanner(false), 3000);
+        }
+        setProgress({ xp: data.xp, level: data.level });
+      }
+    } catch (err) {
+      console.error(err);
     }
 
-    if (label) {
+    if (label && (gained > 0 || kind === 'pet')) {
       const id = Date.now() + Math.random();
       setFloatingTexts((prev) => [...prev, { id, text: label }]);
       setTimeout(() => {
@@ -184,7 +221,7 @@ export default function MascotWidget({
       }, 1200);
     }
 
-    onXpGained?.(amount);
+    onXpGained?.(gained);
   }
 
   // Petting mechanic (Tactile dopamine juice)
@@ -207,11 +244,11 @@ export default function MascotWidget({
       setPettingHearts((prev) => prev.filter((p) => !newParticles.find((np) => np.id === p.id)));
     }, 1000);
 
-    const cuteReactions = ['+5 LOVE! 💖', 'PURRR! 🦥', 'SO COZY! ✨', 'HEHEHE! 🍃'].map((x) => t(x));
-    addXp(5, cuteReactions[Math.floor(Math.random() * cuteReactions.length)]);
+    const cuteReactions = ['PURRR! 🦥', 'SO COZY! ✨', 'HEHEHE! 🍃'].map((x) => t(x));
+    addXp('pet', cuteReactions[Math.floor(Math.random() * cuteReactions.length)]);
 
-    if (state === 'screaming') {
-      setBubbleText(t('Hungry, but your cuddles help! 💖'));
+    if (state === 'dozing') {
+      setBubbleText(t('Snuggles make a lovely nap 💖'));
     } else if (state === 'food_coma') {
       setBubbleText(t('Mmm... belly rubs are the best 💤'));
     } else {
@@ -227,7 +264,7 @@ export default function MascotWidget({
     e.stopPropagation();
     playSound.sparkle();
     setStatueActive(true);
-    addXp(10, t('+1 ACORN! 🌰'));
+    addXp('statue', t('+1 ACORN! 🌰'));
     setBubbleText(t('The ancient stone guardian winks at you! ✨'));
     setTimeout(() => {
       setStatueActive(false);
@@ -244,7 +281,7 @@ export default function MascotWidget({
       { id: Date.now() + 1, emoji: '🌸', x: 280 + Math.random() * 30 },
     ];
     setButterflies((prev) => [...prev, ...newButterflies]);
-    addXp(3, t('+3 VIBE 🌸'));
+    addXp('flowers', t('+3 VIBE 🌸'));
     setTimeout(() => {
       setButterflies((prev) => prev.filter((b) => !newButterflies.find((nb) => nb.id === b.id)));
     }, 1500);
@@ -452,16 +489,14 @@ export default function MascotWidget({
                 scale: 1,
                 opacity: 1,
                 y: 0,
-                x: state === 'screaming' ? [-3, 3, -3, 3, 0] : 0,
+                x: 0,
               }}
               exit={{ scale: 0.6, opacity: 0 }}
               transition={{ duration: 0.25 }}
               onClick={handlePetSloth}
-              className={`pixel-speech-bubble px-3 py-1.5 max-w-[210px] text-center shadow-lg cursor-pointer ${
-                state === 'screaming' ? 'border-red-600 bg-red-50 text-red-900' : ''
-              }`}
+              className="pixel-speech-bubble px-3 py-1.5 max-w-[210px] text-center shadow-lg cursor-pointer"
             >
-              <p className={`text-[11px] font-pixel leading-snug ${state === 'screaming' ? 'text-red-700 font-bold' : 'text-stone-800'}`}>
+              <p className="text-[11px] font-pixel leading-snug text-stone-800">
                 {activeBubble}
               </p>
             </motion.div>
@@ -488,7 +523,7 @@ export default function MascotWidget({
         className="absolute bottom-5 left-1/2 transform -translate-x-1/2 z-10 cursor-pointer flex flex-col items-center"
         onClick={handlePetSloth}
       >
-        {/* ==================== STATE 1: FOOD COMA (flat on his back on the floor, defeated) ==================== */}
+        {/* ==================== STATE 1: FOOD COMA (flat on his back, content) ==================== */}
         {state === 'food_coma' ? (
           <motion.div
             animate={{ scale: [1, 1.03, 1] }}
@@ -499,10 +534,10 @@ export default function MascotWidget({
             <motion.div
               className="absolute text-lg pointer-events-none"
               style={{ left: 8, top: -4 }}
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 2.4, ease: 'linear' }}
+              animate={{ y: [0, -4, 0], rotate: [-8, 8, -8] }}
+              transition={{ repeat: Infinity, duration: 3.2, ease: 'easeInOut' }}
             >
-              💫
+              🍃
             </motion.div>
             {/* Groan */}
             <motion.div
@@ -510,7 +545,7 @@ export default function MascotWidget({
               transition={{ repeat: Infinity, duration: 2.4, ease: 'easeOut' }}
               className="absolute -top-5 end-4 font-pixel text-[10px] text-amber-300 pointer-events-none"
             >
-              {t('uuugh…')}
+              {t('zzz…')}
             </motion.div>
 
             <svg width="170" height="100" viewBox="0 0 170 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -551,17 +586,15 @@ export default function MascotWidget({
               <ellipse cx="36" cy="60" rx="15" ry="14" fill="#f4ece1" />
               <ellipse cx="26" cy="56" rx="6.5" ry="4.5" fill="#4a3b2c" transform="rotate(-20 26 56)" />
               <ellipse cx="46" cy="56" rx="6.5" ry="4.5" fill="#4a3b2c" transform="rotate(20 46 56)" />
-              {/* X eyes */}
-              <path d="M23 53 L29 59 M29 53 L23 59" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
-              <path d="M43 53 L49 59 M49 53 L43 59" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" />
-              {/* Nose, wobbly mouth, tongue out */}
+              {/* Content closed eyes */}
+              <path d="M22 56 Q26 60 30 56" stroke="#ffffff" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+              <path d="M42 56 Q46 60 50 56" stroke="#ffffff" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+              {/* Nose and a small smile */}
               <ellipse cx="36" cy="64" rx="4.5" ry="3" fill="#3a2a1d" />
-              <path d="M29 69 Q33 72 36 69 Q39 72 43 69" stroke="#3a2a1d" strokeWidth="2" fill="none" strokeLinecap="round" />
-              <path d="M35 70 Q36 82 42 75 Q40 71 38 70 Z" fill="#f43f5e" stroke="#3a2a1d" strokeWidth="1.5" />
-              {/* Cheeks, sweat drop */}
+              <path d="M30 69 Q36 74 42 69" stroke="#3a2a1d" strokeWidth="2" fill="none" strokeLinecap="round" />
+              {/* Cheeks */}
               <circle cx="20" cy="64" r="4" fill="#e2847a" opacity="0.55" />
               <circle cx="52" cy="64" r="4" fill="#e2847a" opacity="0.55" />
-              <path d="M14 40 Q9 49 14 52 Q19 49 14 40 Z" fill="#38bdf8" opacity="0.85" />
               {/* Leaf */}
               <g transform="translate(36, 40) rotate(-25)">
                 <path d="M0 12 C-5 6, 2 0, 9 0 C12 6, 7 12, 0 12 Z" fill="#48bb78" stroke="#1c4d32" strokeWidth="2" />
@@ -569,7 +602,7 @@ export default function MascotWidget({
             </svg>
           </motion.div>
         ) : (
-          /* ==================== NORMAL, DANCING, OR SCREAMING STATES ==================== */
+          /* ==================== NORMAL, DANCING, OR DOZING STATES ==================== */
           <motion.div
             animate={
               state === 'eating'
@@ -582,11 +615,6 @@ export default function MascotWidget({
                     rotate: [-10, 10, -8, 8, 0],
                     scale: [1, 1.15, 0.95, 1.1, 1],
                   }
-                : state === 'screaming'
-                ? {
-                    x: [-3, 3, -3, 3, 0],
-                    y: [-2, 2, -2, 2, 0],
-                  }
                 : interactiveWave
                 ? { rotate: [-6, 8, -6, 6, 0], scale: [1, 1.12, 1] }
                 : { y: [0, -3, 0], rotate: [-1, 1, -1] }
@@ -598,8 +626,6 @@ export default function MascotWidget({
                 ? { repeat: Infinity, duration: 0.9, ease: 'easeInOut' }
                 : state === 'dancing'
                 ? { repeat: Infinity, duration: 1.1, ease: 'easeInOut' }
-                : state === 'screaming'
-                ? { repeat: Infinity, duration: 0.12 }
                 : interactiveWave
                 ? { duration: 0.6, ease: 'easeInOut' }
                 : { repeat: Infinity, duration: 3.5, ease: 'easeInOut' }
@@ -744,7 +770,7 @@ export default function MascotWidget({
                 animate={
                   state === 'eating' || state === 'drinking'
                     ? { rotate: 0 }
-                    : state === 'screaming' || state === 'dancing'
+                    : state === 'dancing'
                     ? { rotate: [-35, 20, -35] }
                     : { rotate: [0, -3, 0] }
                 }
@@ -771,7 +797,7 @@ export default function MascotWidget({
                 animate={
                   state === 'eating' || state === 'drinking'
                     ? { rotate: 0 }
-                    : state === 'screaming' || state === 'dancing'
+                    : state === 'dancing'
                     ? { rotate: [35, -20, 35] }
                     : interactiveWave
                     ? { rotate: [-20, 30, -20] }
@@ -779,7 +805,7 @@ export default function MascotWidget({
                 }
                 transition={{
                   repeat: Infinity,
-                  duration: state === 'eating' ? 0.4 : state === 'dancing' ? 0.55 : state === 'screaming' ? 0.18 : 3.2,
+                  duration: state === 'eating' ? 0.4 : state === 'dancing' ? 0.55 : 3.2,
                 }}
                 style={{ originX: 0.2, originY: -0.05 }}
               >
@@ -824,16 +850,6 @@ export default function MascotWidget({
                     animate={{ ry: [1.5, 6, 1.5] }}
                     transition={{ repeat: Infinity, duration: state === 'drinking' ? 0.9 : 0.4, ease: 'easeInOut' }}
                   />
-                </>
-              ) : state === 'screaming' ? (
-                <>
-                  <circle cx="55" cy="48" r="5" fill="#ffffff" />
-                  <circle cx="55" cy="48" r="3" fill="#140a04" />
-                  <circle cx="81" cy="48" r="5" fill="#ffffff" />
-                  <circle cx="81" cy="48" r="3" fill="#140a04" />
-                  <circle cx="48" cy="54" r="2" fill="#38bdf8" />
-                  <ellipse cx="68" cy="60" rx="7" ry="6" fill="#881337" stroke="#3d2f24" strokeWidth="2" />
-                  <ellipse cx="68" cy="62" rx="4" ry="2.5" fill="#f43f5e" />
                 </>
               ) : state === 'dancing' ? (
                 <>

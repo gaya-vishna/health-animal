@@ -80,14 +80,14 @@ export default function FoodInventoryDock({ onQuickFeed, onOpenFullLog }) {
       </div>
 
       {/* Dock Shelf Container */}
-      <div className="pixel-food-dock py-2 px-3 flex items-center justify-between gap-1.5 shadow-xl">
+      <div className="pixel-food-dock py-2 px-2 flex items-center justify-between gap-1 shadow-xl">
         {DOCK_ITEMS.map((item) => (
           <motion.button
             key={item.id}
             whileTap={{ scale: 0.82 }}
             whileHover={{ scale: 1.1 }}
             onClick={() => handleFeed(item)}
-            className="w-10 h-10 rounded-full pixel-food-slot flex items-center justify-center text-xl shrink-0 cursor-pointer shadow-md hover:border-amber-400 transition-colors"
+            className="w-12 h-12 min-w-12 min-h-12 rounded-full pixel-food-slot flex items-center justify-center text-xl shrink-0 cursor-pointer shadow-md hover:border-amber-400 transition-colors"
             title={`${t(item.label)} (${t(item.tag)})`}
           >
             <span>{item.emoji}</span>
@@ -99,7 +99,7 @@ export default function FoodInventoryDock({ onQuickFeed, onOpenFullLog }) {
           whileTap={{ scale: 0.82 }}
           whileHover={{ scale: 1.1 }}
           onClick={onOpenFullLog}
-          className="w-10 h-10 rounded-full bg-gradient-to-b from-amber-400 to-amber-600 border-2 border-[#361a09] flex items-center justify-center text-amber-950 font-pixel font-bold text-lg shadow-md cursor-pointer shrink-0"
+          className="w-12 h-12 min-w-12 min-h-12 rounded-full bg-gradient-to-b from-amber-400 to-amber-600 border-2 border-[#361a09] flex items-center justify-center text-amber-950 font-pixel font-bold text-lg shadow-md cursor-pointer shrink-0"
           title={t('Log custom meal / AI Vision')}
         >
           +

@@ -7,7 +7,7 @@ import { api } from '../utils/api';
 import { LOCAL } from '../local/mode';
 import { exportBackup, importBackup } from '../local/backup';
 import { App as NativeApp } from '@capacitor/app';
-import { isNativeApp, getReminderPrefs, setReminderPrefs, refreshReminders, sendTestReminder } from '../utils/reminders';
+import { isNativeApp, getReminderPrefs, setReminderPrefs, refreshReminders, sendTestReminder, snacksOn } from '../utils/reminders';
 import { t } from '../utils/i18n';
 import { goalDirectionOf } from '../utils/goal';
 import { setSlothName, useSlothName } from '../utils/slothName';
@@ -168,8 +168,11 @@ export default function SettingsView() {
     }
   }
 
+  const goalDir = goalDirectionOf(currentWeight, goalWeight);
+  const prefOn = (key) => (key === 'snacks' ? snacksOn(prefs, goalDir) : !!prefs[key]);
+
   function togglePref(key) {
-    const next = { ...prefs, [key]: !prefs[key] };
+    const next = { ...prefs, [key]: !prefOn(key) };
     setPrefs(next);
     setReminderPrefs(next);
     refreshReminders();
@@ -643,18 +646,18 @@ export default function SettingsView() {
           <div className="pt-3 border-t border-[#3b2011] space-y-2.5">
             {native ? (
               <>
-                {[['meals', 'Meal reminders'], ['bedtime', 'Bedtime wind-down'], ['water', 'Water breaks (11:00, 14:00, 17:00)']].map(([key, name]) => (
+                {[['meals', 'Meal reminders'], ['bedtime', 'Bedtime wind-down'], ['water', 'Water breaks (11:00, 14:00, 17:00)'], ['snacks', 'Snack nudges (11:00, 16:30)']].map(([key, name]) => (
                   <button
                     key={key}
                     type="button"
                     role="switch"
-                    aria-checked={prefs[key]}
+                    aria-checked={prefOn(key)}
                     onClick={() => togglePref(key)}
                     className="w-full flex items-center justify-between gap-3 py-1.5 cursor-pointer"
                   >
                     <span className="text-[10px] font-pixel text-amber-100 text-start">{t(name)}</span>
-                    <span className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${prefs[key] ? 'bg-emerald-600' : 'bg-[#3a2212]'}`}>
-                      <span className={`absolute top-0.5 start-0.5 w-5 h-5 rounded-full bg-amber-100 transition-transform ${prefs[key] ? 'translate-x-5 rtl:-translate-x-5' : ''}`} />
+                    <span className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${prefOn(key) ? 'bg-emerald-600' : 'bg-[#3a2212]'}`}>
+                      <span className={`absolute top-0.5 start-0.5 w-5 h-5 rounded-full bg-amber-100 transition-transform ${prefOn(key) ? 'translate-x-5 rtl:-translate-x-5' : ''}`} />
                     </span>
                   </button>
                 ))}
@@ -669,7 +672,7 @@ export default function SettingsView() {
                 {t('Reminders arrive in the Android app.')}{' '}
                 {apkUrl
                   ? <a href={apkUrl} className="text-emerald-400 underline">{t('Download the Android app')}</a>
-                  : t('Build the Android app from the source code (see README).')}
+                  : t('The Android app can be built from the source code.')}
               </p>
             )}
           </div>

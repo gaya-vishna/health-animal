@@ -161,7 +161,7 @@ export default function App() {
                 to={to}
                 id={id}
                 aria-label={t('Feed me: log a meal')}
-                className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-amber-100/45 hover:text-amber-100/80 transition-colors"
+                className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-amber-100/70 hover:text-amber-100 transition-colors"
               >
                 <span className="text-xl leading-none grayscale opacity-70">{emoji}</span>
                 <span className="font-pixel text-[9px] tracking-wide">{t(label)}</span>
@@ -174,7 +174,7 @@ export default function App() {
                 id={id}
                 className={({ isActive }) =>
                   `flex-1 relative flex flex-col items-center gap-0.5 py-2 rounded-xl transition-colors ${
-                    isActive ? 'bg-[#2e1b0e] text-amber-300' : 'text-amber-100/45 hover:text-amber-100/80'
+                    isActive ? 'bg-[#2e1b0e] text-amber-300' : 'text-amber-100/70 hover:text-amber-100'
                   }`
                 }
               >

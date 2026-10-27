@@ -11,11 +11,15 @@ export default function PixelGameHud({
   proteinHit = false,
   energyLevel = 100,
   streakDays = 0,
+  goalDirection = 'maintain',
   onOpenLogModal,
   onOpenQuickWater,
 }) {
   // Calculate percentage fills
-  const calPercent = Math.min(100, Math.max(0, (totalCals / targetMax) * 100));
+  // Gainers fill the bar toward the minimum target; everyone else toward the upper end
+  const gaining = goalDirection === 'gain';
+  const calGoal = gaining ? targetMin : targetMax;
+  const calPercent = Math.min(100, Math.max(0, (totalCals / (calGoal || 1)) * 100));
   const waterPercent = Math.min(100, Math.max(0, (totalWaterMl / waterTarget) * 100));
   const proteinPercent = proteinHit ? 100 : 8;
 
@@ -47,14 +51,14 @@ export default function PixelGameHud({
         <motion.div 
           whileTap={{ scale: 0.95 }}
           className="flex-1 pixel-badge px-3 py-1.5 flex items-center justify-between cursor-pointer border-[#4e203c]"
-          title={t('Streak & Rescue Gems')}
+          title={t('Days you and your sloth have spent together')}
         >
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-gradient-to-b from-pink-400 to-rose-600 flex items-center justify-center text-xs shadow-sm border border-rose-950">
               💎
             </div>
             <span className="font-pixel text-[11px] text-pink-200 tracking-wider">
-              {streakDays} <span className="text-[8px] text-pink-400/80">{t('DAYS')}</span>
+              {streakDays} <span className="text-[8px] text-pink-400/80">{t('days together')}</span>
             </span>
           </div>
           <div className="w-4 h-4 rounded bg-rose-600/60 border border-rose-500/80 flex items-center justify-center text-[10px] text-pink-200 font-pixel font-bold">
@@ -73,15 +77,15 @@ export default function PixelGameHud({
           <div className="flex-1 relative">
             <div className="h-[18px] pixel-bar-track rounded-full overflow-hidden p-0.5 flex items-center">
               <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-red-600 to-orange-500 shadow-inner"
+                className="h-full rounded-full bg-gradient-to-r from-teal-500 to-amber-400 shadow-inner"
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.max(4, calPercent)}%` }}
                 transition={{ type: 'spring', damping: 15, stiffness: 120 }}
               />
             </div>
-            <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-orange-200/70">
+            <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-amber-100/70">
               <span>{t('FUEL')}</span>
-              <span><bdi dir="ltr">{totalCals} / {targetMax}</bdi> {t('kcal')}</span>
+              <span><bdi dir="ltr">{totalCals} / {calGoal}</bdi> {t('kcal')}</span>
             </div>
           </div>
         </div>
