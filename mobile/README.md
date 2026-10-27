@@ -57,7 +57,7 @@ npm install
 npx cap sync android
 cd android
 ./gradlew assembleDebug        # macOS / Linux (run `chmod +x gradlew` once if needed)
-gradlew.bat assembleDebug      # Windows (cmd / PowerShell: .gradlew.bat assembleDebug)
+gradlew.bat assembleDebug      # Windows (cmd / PowerShell: .\gradlew.bat assembleDebug)
 ```
 
 `npm run apk` in `mobile/` does the sync and the build in one go, but it calls `gradlew.bat`, so it is
