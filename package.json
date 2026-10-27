@@ -1,6 +1,9 @@
 {
   "name": "health-animal",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
