@@ -44,6 +44,7 @@ router.get('/history', async (req, res) => {
       byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
     }
 
+    const lastCheck = new Map(), mealProtein = new Set();
     for (const log of logs) {
       const day = byDay.get(dayKey(log.createdAt));
       if (!day) continue;
@@ -53,11 +54,11 @@ router.get('/history', async (req, res) => {
           day.water.push({ id: log.id, ml: log.waterMl, time: clock(log.createdAt) });
         }
       } else if (log.mealType === 'protein-check') {
-        if (log.proteinHit) day.proteinHit = true;
+        lastCheck.set(day, log); // logs are ordered by createdAt asc, so the latest wins
       } else {
         const calories = logCalories(log);
         day.calories += calories;
-        if (log.proteinHit) day.proteinHit = true;
+        if (log.proteinHit) mealProtein.add(day);
         day.meals.push({
           id: log.id,
           name: log.rawText || log.recipe?.name || '',
@@ -67,6 +68,10 @@ router.get('/history', async (req, res) => {
         });
       }
     }
+    for (const day of byDay.values()) {
+      day.proteinHit = lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
+    }
+
     for (const w of workouts) {
       const day = byDay.get(dayKey(w.date));
       if (day) day.workouts.push({ id: w.id, type: w.type, durationMin: w.durationMin, time: clock(w.date) });

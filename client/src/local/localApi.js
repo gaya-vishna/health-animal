@@ -114,11 +114,14 @@ async function dashboard() {
   const config = read('config');
   const start = startOfToday();
   const today = read('logs').filter((l) => new Date(l.createdAt) >= start);
-  let totalCals = 0, totalWaterMl = 0, proteinHit = false, lastMealAt = null;
+  let totalCals = 0, totalWaterMl = 0, mealProteinHit = false, lastMealAt = null;
+  let lastProteinCheck = null;
   const loggedMealTypes = [];
   for (const log of today) {
     totalWaterMl += log.waterMl || 0;
-    if (log.proteinHit) proteinHit = true;
+    if (log.mealType === 'protein-check') {
+      if (!lastProteinCheck || new Date(log.createdAt) >= new Date(lastProteinCheck.createdAt)) lastProteinCheck = log;
+    } else if (log.proteinHit) mealProteinHit = true;
     const cals = logCalories(log);
     totalCals += cals;
     if (cals > 0 || (log.mealType && log.mealType !== 'water' && log.mealType !== 'protein-check')) {
@@ -126,6 +129,8 @@ async function dashboard() {
       if (!lastMealAt || new Date(log.createdAt) > new Date(lastMealAt)) lastMealAt = log.createdAt;
     }
   }
+  // The latest protein check of the day wins, so the toggle can be undone; meals count only without one.
+  const proteinHit = lastProteinCheck ? !!lastProteinCheck.proteinHit : mealProteinHit;
   const targetMin = config.dailyCaloricTargetMin || 1450;
   const targetMax = config.dailyCaloricTargetMax || 1550;
   const energyLevel = Math.min(100, Math.round((totalCals / targetMax) * 100));
@@ -186,7 +191,7 @@ async function addLog(fields, progressKind = 'meal') {
     ...fields,
   };
   await write('logs', [...read('logs'), log]);
-  await recordLogProgress(progressKind);
+  if (progressKind) await recordLogProgress(progressKind);
   return log;
 }
 
@@ -253,6 +258,7 @@ function history(days) {
     d.setDate(since.getDate() + i);
     byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
   }
+  const lastCheck = new Map(), mealProtein = new Set();
   for (const log of read('logs')) {
     const day = byDay.get(dayKey(log.createdAt));
     if (!day) continue;
@@ -262,13 +268,16 @@ function history(days) {
         day.water.push({ id: log.id, ml: log.waterMl, time: clock(log.createdAt) });
       }
     } else if (log.mealType === 'protein-check') {
-      if (log.proteinHit) day.proteinHit = true;
+      if (!lastCheck.has(day) || new Date(log.createdAt) >= new Date(lastCheck.get(day).createdAt)) lastCheck.set(day, log);
     } else {
       const calories = Math.round(logCalories(log));
       day.calories += calories;
-      if (log.proteinHit) day.proteinHit = true;
+      if (log.proteinHit) mealProtein.add(day);
       day.meals.push({ id: log.id, name: log.rawText || recipeById(log.recipeId)?.name || '', mealType: log.mealType, calories, time: clock(log.createdAt) });
     }
+  }
+  for (const day of byDay.values()) {
+    day.proteinHit = lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
   }
   for (const w of read('workouts')) {
     const day = byDay.get(dayKey(w.date));
@@ -451,7 +460,11 @@ async function route(method, path, query, body) {
     }
     case key === 'POST log/protein': {
       const hit = body.hit ?? true;
-      return ok({ success: true, proteinHit: hit, log: await addLog({ mealType: 'protein-check', proteinHit: hit, createdAt: clampCreatedAt(body.createdAt) }, 'protein') });
+      // Only the first hit of a day counts as progress, so toggling off and on can't farm XP.
+      const start = startOfToday();
+      const hitBefore = read('logs').some((l) => l.mealType === 'protein-check' && l.proteinHit && new Date(l.createdAt) >= start);
+      const progress = hit && !hitBefore ? 'protein' : null;
+      return ok({ success: true, proteinHit: hit, log: await addLog({ mealType: 'protein-check', proteinHit: hit, createdAt: clampCreatedAt(body.createdAt) }, progress) });
     }
     case key === 'POST log/workout': {
       const w = { id: newId(), date: new Date().toISOString(), type: body.type || 'cardio', durationMin: body.durationMin || 30, notes: body.notes || null };

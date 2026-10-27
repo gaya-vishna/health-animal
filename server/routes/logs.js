@@ -89,14 +89,17 @@ router.get('/dashboard', async (req, res) => {
     // Sum calories (recipe math for recipe mode, midpoint for AI mode)
     let totalCals = 0;
     let totalWaterMl = 0;
-    let proteinHit = false;
+    let mealProteinHit = false;
+    let lastProteinCheck = null;
 
     let lastMealAt = null;
     const loggedMealTypes = [];
 
     for (const log of todayLogs) {
       totalWaterMl += log.waterMl || 0;
-      if (log.proteinHit) proteinHit = true;
+      if (log.mealType === 'protein-check') {
+        if (!lastProteinCheck || new Date(log.createdAt) >= new Date(lastProteinCheck.createdAt)) lastProteinCheck = log;
+      } else if (log.proteinHit) mealProteinHit = true;
 
       let logCals = 0;
       if (log.inputMode === 'recipe' && log.recipe && log.weightGram) {
@@ -117,6 +120,9 @@ router.get('/dashboard', async (req, res) => {
         }
       }
     }
+
+    // The latest protein check of the day wins, so the toggle can be undone; meals count only without one.
+    const proteinHit = lastProteinCheck ? !!lastProteinCheck.proteinHit : mealProteinHit;
 
     const energyLevel = Math.min(
       100,
@@ -283,6 +289,11 @@ router.post('/log/water', async (req, res) => {
 router.post('/log/protein', async (req, res) => {
   try {
     const { hit = true } = req.body;
+    // Only the first hit of a day counts as progress, so toggling off and on can't farm XP.
+    const { start, end } = getTodayRange();
+    const hitBefore = await prisma.dailyLog.count({
+      where: { userId: req.userId, mealType: 'protein-check', proteinHit: true, createdAt: { gte: start, lte: end } },
+    });
     const log = await prisma.dailyLog.create({
       data: {
         userId: req.userId,
@@ -292,7 +303,7 @@ router.post('/log/protein', async (req, res) => {
         createdAt: clampCreatedAt(req.body.createdAt),
       },
     });
-    await recordLogProgress(req.userId, 'protein');
+    if (hit && !hitBefore) await recordLogProgress(req.userId, 'protein');
     res.json({ success: true, proteinHit: hit, log });
   } catch (err) {
     console.error('❌ Log protein error:', err);
