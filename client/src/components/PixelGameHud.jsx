@@ -81,7 +81,7 @@ export default function PixelGameHud({
             </div>
             <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-orange-200/70">
               <span>{t('FUEL')}</span>
-              <span><bdi dir="ltr">{totalCals} / {targetMax} {t('kcal')}</bdi></span>
+              <span><bdi dir="ltr">{totalCals} / {targetMax}</bdi> {t('kcal')}</span>
             </div>
           </div>
         </div>
@@ -102,7 +102,7 @@ export default function PixelGameHud({
             </div>
             <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-yellow-200/70">
               <span>{t('WATER')}</span>
-              <span><bdi dir="ltr">{totalWaterMl} / {waterTarget}{t('ml')}</bdi></span>
+              <span><bdi dir="ltr">{totalWaterMl} / {waterTarget}</bdi> {t('ml')}</span>
             </div>
           </div>
         </div>
