@@ -11,8 +11,10 @@ router.get('/settings', async (req, res) => {
     if (!config) {
       return res.status(404).json({ error: 'No preferences found for this account.' });
     }
+    const latest = await prisma.weeklyCheckin.findFirst({ where: { userId: req.userId }, orderBy: { createdAt: 'desc' } });
     res.json({
       ...config,
+      latestWeighInKg: latest ? latest.weightKg : null,
       mealTimesJson: JSON.parse(config.mealTimesJson),
       notificationSoundsJson: JSON.parse(config.notificationSoundsJson),
     });
@@ -39,6 +41,7 @@ router.post('/settings', async (req, res) => {
       birthYear,
       slothName,
       setupDone,
+      proteinTargetG,
     } = req.body;
 
     // sex / birthYear: null or '' clears, a valid value sets, anything else is ignored.
@@ -49,6 +52,13 @@ router.post('/settings', async (req, res) => {
     else if (birthYear !== undefined) {
       const y = Number(birthYear);
       if (Number.isInteger(y) && y >= 1900 && y <= new Date().getFullYear() - 10) profile.birthYear = y;
+    }
+
+    // proteinTargetG: null or '' clears (automatic); an integer 1-400 sets it; anything else is ignored.
+    if (proteinTargetG === null || proteinTargetG === '') profile.proteinTargetG = null;
+    else if (proteinTargetG !== undefined) {
+      const p = Number(proteinTargetG);
+      if (Number.isInteger(p) && p >= 1 && p <= 400) profile.proteinTargetG = p;
     }
 
     // slothName: null, '' or blank clears it; a trimmed 1-20 character string sets it; anything else is ignored.

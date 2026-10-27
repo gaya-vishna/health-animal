@@ -1,7 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 
-const { goalDirectionOf, isOverComfort } = require('../lib/goal');
+const { goalDirectionOf, isOverComfort, proteinAutoTargetG } = require('../lib/goal');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -65,6 +65,23 @@ function getTodayRange() {
   return { start, end };
 }
 
+// Grams of protein in one log: recipe math when there is a weight, otherwise what was saved.
+function logProtein(log) {
+  if (log.mealType === 'protein-check') return 0;
+  if (log.inputMode === 'recipe' && log.recipe && log.weightGram) {
+    return (log.weightGram * (log.recipe.proteinPer100g || 0)) / 100;
+  }
+  return log.proteinG || 0;
+}
+
+// Effective daily target: the saved one, else automatic from the latest weigh-in (or start weight, or 70).
+async function proteinTargetFor(userId, config) {
+  if (config?.proteinTargetG) return config.proteinTargetG;
+  const latest = await prisma.weeklyCheckin.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } });
+  const weight = latest?.weightKg || config?.startWeightKg || 70;
+  return proteinAutoTargetG(weight, goalDirectionOf(config?.startWeightKg || 70, config?.targetWeightKg || 60));
+}
+
 // Helper: compute mood from energy level
 function computeMood(energyLevel, totalCals, targetMin, targetMax, goalDirection) {
   const now = new Date();
@@ -89,17 +106,14 @@ router.get('/dashboard', async (req, res) => {
     // Sum calories (recipe math for recipe mode, midpoint for AI mode)
     let totalCals = 0;
     let totalWaterMl = 0;
-    let mealProteinHit = false;
-    let lastProteinCheck = null;
+    let totalProtein = 0;
 
     let lastMealAt = null;
     const loggedMealTypes = [];
 
     for (const log of todayLogs) {
       totalWaterMl += log.waterMl || 0;
-      if (log.mealType === 'protein-check') {
-        if (!lastProteinCheck || new Date(log.createdAt) >= new Date(lastProteinCheck.createdAt)) lastProteinCheck = log;
-      } else if (log.proteinHit) mealProteinHit = true;
+      totalProtein += logProtein(log);
 
       let logCals = 0;
       if (log.inputMode === 'recipe' && log.recipe && log.weightGram) {
@@ -121,8 +135,9 @@ router.get('/dashboard', async (req, res) => {
       }
     }
 
-    // The latest protein check of the day wins, so the toggle can be undone; meals count only without one.
-    const proteinHit = lastProteinCheck ? !!lastProteinCheck.proteinHit : mealProteinHit;
+    const proteinG = Math.round(totalProtein);
+    const proteinTargetG = await proteinTargetFor(req.userId, config);
+    const proteinHit = proteinG >= proteinTargetG;
 
     const energyLevel = Math.min(
       100,
@@ -174,6 +189,8 @@ router.get('/dashboard', async (req, res) => {
     res.json({
       totalCals: Math.round(totalCals),
       totalWaterMl,
+      proteinG,
+      proteinTargetG,
       proteinHit,
       targetMin: config?.dailyCaloricTargetMin || 1450,
       targetMax: config?.dailyCaloricTargetMax || 1550,
@@ -214,7 +231,7 @@ router.post('/log/meal', async (req, res) => {
       aiEstimatedCalsMin,
       aiEstimatedCalsMax,
       aiBreakdown,
-      proteinHit,
+      proteinG: proteinGBody,
       createdAt: createdAtBody,
     } = req.body;
 
@@ -235,6 +252,9 @@ router.post('/log/meal', async (req, res) => {
       estMax = Math.round(calories);
     }
 
+    const pg = Number(proteinGBody);
+    const proteinG = proteinGBody !== undefined && proteinGBody !== null && proteinGBody !== '' && Number.isFinite(pg) && pg >= 0 ? pg : null;
+
     const log = await prisma.dailyLog.create({
       data: {
         userId: req.userId,
@@ -247,11 +267,31 @@ router.post('/log/meal', async (req, res) => {
         aiEstimatedCalsMax: estMax || null,
         aiBreakdown: aiBreakdown ? JSON.stringify(aiBreakdown) : null,
         waterMl: 0,
-        proteinHit: proteinHit || false,
+        proteinG,
         createdAt: clampCreatedAt(createdAtBody),
       },
     });
     await recordLogProgress(req.userId, 'meal');
+
+    // Reaching today's protein goal earns its XP once a day (a meal backdated to yesterday doesn't count).
+    try {
+      const { start, end } = getTodayRange();
+      if (log.createdAt >= start && log.createdAt <= end) {
+        const [config, todayLogs, av] = await Promise.all([
+          prisma.userConfig.findUnique({ where: { userId: req.userId } }),
+          prisma.dailyLog.findMany({ where: { userId: req.userId, createdAt: { gte: start, lte: end } }, include: { recipe: true } }),
+          getAvatar(req.userId),
+        ]);
+        const total = todayLogs.reduce((s, l) => s + logProtein(l), 0);
+        const today = dayKey();
+        if (av.proteinXpDay !== today && Math.round(total) >= (await proteinTargetFor(req.userId, config))) {
+          await prisma.avatarState.update({ where: { userId: req.userId }, data: { proteinXpDay: today } });
+          await recordLogProgress(req.userId, 'protein');
+        }
+      }
+    } catch (err) {
+      console.error('protein goal check failed', err.message);
+    }
 
     res.json({
       success: true,
@@ -282,32 +322,6 @@ router.post('/log/water', async (req, res) => {
   } catch (err) {
     console.error('❌ Log water error:', err);
     res.status(500).json({ error: 'Failed to log water', details: err.message });
-  }
-});
-
-// POST /api/log/protein  (toggle protein hit for today)
-router.post('/log/protein', async (req, res) => {
-  try {
-    const { hit = true } = req.body;
-    // Only the first hit of a day counts as progress, so toggling off and on can't farm XP.
-    const { start, end } = getTodayRange();
-    const hitBefore = await prisma.dailyLog.count({
-      where: { userId: req.userId, mealType: 'protein-check', proteinHit: true, createdAt: { gte: start, lte: end } },
-    });
-    const log = await prisma.dailyLog.create({
-      data: {
-        userId: req.userId,
-        mealType: 'protein-check',
-        inputMode: 'recipe',
-        proteinHit: hit,
-        createdAt: clampCreatedAt(req.body.createdAt),
-      },
-    });
-    if (hit && !hitBefore) await recordLogProgress(req.userId, 'protein');
-    res.json({ success: true, proteinHit: hit, log });
-  } catch (err) {
-    console.error('❌ Log protein error:', err);
-    res.status(500).json({ error: 'Failed to log protein hit', details: err.message });
   }
 });
 

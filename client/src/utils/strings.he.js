@@ -34,8 +34,6 @@ export default {
   "VIBE": "מצב רוח",
   "ml": "מ״ל",
   "PROTEIN": "חלבון",
-  "Goal hit!": "היעד הושג!",
-  "Not yet": "עוד לא",
   "kcal": "קק״ל",
   "Log custom meal / AI Vision": "רישום ארוחה מותאמת / סריקת AI",
   "Apple": "תפוח",
@@ -50,10 +48,6 @@ export default {
   "+180 KCAL 🍙": "+180 קק״ל 🍙",
   "+250ml": "+250 מ״ל",
   "cups": "כוסות",
-  "FLOOR": "רצפה",
-  "HIT! ✓": "הושג! ✓",
-  "TAP LOG": "לחצו לרישום",
-  "80–100g target": "יעד 80–100 גר׳",
   "ACTIVE": "פעילות",
   "TRAIN": "אימון",
   "Log quest 🏃": "רישום אימון 🏃",
@@ -534,4 +528,8 @@ export default {
   "Earlier today": "מוקדם יותר היום",
   "Recent": "אחרונים",
   "Ideas for your next bite": "רעיונות לביס הבא",
+  "Protein goal reached! {name} feels strong 💪": "יעד החלבון הושג! {name} מרגיש חזק 💪",
+  "{n}g protein": "{n} גר׳ חלבון",
+  "DAILY PROTEIN (G)": "חלבון יומי (גר׳)",
+  "Rough guideline, not medical advice.": "הנחיה כללית בלבד, לא ייעוץ רפואי."
 };

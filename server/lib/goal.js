@@ -19,4 +19,9 @@ function isOverComfort(dir, total, max) {
   return dir === 'gain' ? total > max * 1.25 : total > max;
 }
 
-module.exports = { MAINTAIN_BAND_KG, goalDirectionOf, remainingCals, isOverComfort };
+// Rough daily protein guideline in grams (not medical advice)
+function proteinAutoTargetG(weightKg, dir) {
+  return Math.round(weightKg * (dir === 'gain' ? 1.5 : 1.2));
+}
+
+module.exports = { MAINTAIN_BAND_KG, goalDirectionOf, remainingCals, isOverComfort, proteinAutoTargetG };

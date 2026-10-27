@@ -121,7 +121,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
             const key = name.toLowerCase();
             if (!name || seen.has(key)) continue;
             seen.add(key);
-            list.push({ name, calories: m.calories, mealType: m.mealType });
+            list.push({ name, calories: m.calories, proteinG: m.proteinG || 0, mealType: m.mealType });
             if (list.length >= 5) break;
           }
           if (list.length >= 5) break;
@@ -234,6 +234,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
         mealType: mealType,
         name: item.name,
         calories: item.calories,
+        proteinG: item.proteinG || 0,
         source: 'ai_text',
         createdAt: whenToIso(when, mealType),
       });
@@ -256,6 +257,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
           mealType,
           name: recipe.name,
           calories: savedCals,
+          proteinG: Math.round((savedGrams * (recipe.proteinPer100g || 0)) / 100),
           source: 'recipe_exact',
           recipeId: selectedRecipe,
           weightGrams: savedGrams,
@@ -273,11 +275,11 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
           mealType,
           name: amount ? `${baseName} · ${amount}` : baseName,
           calories: cals,
+          proteinG: prot,
           source: tab === 'photo' ? 'ai_vision' : 'ai_text',
           notes: r.hiddenTrapsNotes,
           createdAt: whenToIso(when, mealType),
         });
-        if (prot >= 25) await post('/api/log/protein', { hit: true });
         if (saveAsRecipe && baseName) {
           await post('/api/recipes', {
             name: baseName,

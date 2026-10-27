@@ -9,7 +9,7 @@ import { exportBackup, importBackup } from '../local/backup';
 import { App as NativeApp } from '@capacitor/app';
 import { isNativeApp, getReminderPrefs, setReminderPrefs, refreshReminders, sendTestReminder, snacksOn } from '../utils/reminders';
 import { t } from '../utils/i18n';
-import { goalDirectionOf } from '../utils/goal';
+import { goalDirectionOf, proteinAutoTargetG } from '../utils/goal';
 import { setSlothName, useSlothName } from '../utils/slothName';
 import AiKeySettings from '../components/AiKeySettings';
 
@@ -93,6 +93,9 @@ function buildPayload(v, { includeTargetDate }) {
   if (pos(min)) payload.dailyCaloricTargetMin = min;
   if (pos(max)) payload.dailyCaloricTargetMax = max;
   payload.sex = v.sex === 'female' || v.sex === 'male' ? v.sex : null;
+  const pt = String(v.proteinTarget).trim();
+  if (pt === '') payload.proteinTargetG = null;
+  else if (/^\d+$/.test(pt) && parseInt(pt) >= 1 && parseInt(pt) <= 400) payload.proteinTargetG = parseInt(pt);
   const by = String(v.birthYear).trim();
   if (/^\d{4}$/.test(by)) payload.birthYear = parseInt(by);
   else if (by === '') payload.birthYear = null;
@@ -124,6 +127,7 @@ export default function SettingsView() {
   const [birthYear, setBirthYear] = useState('');
   const [slothName, setSlothNameInput] = useState('');
   const [latestKg, setLatestKg] = useState(null);
+  const [proteinTarget, setProteinTarget] = useState('');
 
   // Targets & Bedtime
   const [targetMin, setTargetMin] = useState(1450);
@@ -197,6 +201,8 @@ export default function SettingsView() {
         if (data.birthYear) setBirthYear(String(data.birthYear));
         if (data.slothName) setSlothNameInput(data.slothName);
         setSlothName(data.slothName);
+        if (data.proteinTargetG) setProteinTarget(String(data.proteinTargetG));
+        if (parseFloat(data.latestWeighInKg) > 0) setLatestKg(parseFloat(data.latestWeighInKg));
         if (data.dailyCaloricTargetMin) setTargetMin(data.dailyCaloricTargetMin);
         if (data.dailyCaloricTargetMax) setTargetMax(data.dailyCaloricTargetMax);
         if (data.bedtimeReminderTime) setBedtime(data.bedtimeReminderTime);
@@ -251,7 +257,7 @@ export default function SettingsView() {
     playSound.checkin();
   }
 
-  valuesRef.current = { sex, birthYear, slothName, heightCm, currentWeight, goalWeight, durationWeeks, targetMin, targetMax, bedtime, mealTimes };
+  valuesRef.current = { proteinTarget, sex, birthYear, slothName, heightCm, currentWeight, goalWeight, durationWeeks, targetMin, targetMax, bedtime, mealTimes };
   saveRef.current = save;
 
   function flashStatus(msg) {
@@ -619,6 +625,25 @@ export default function SettingsView() {
                 className="w-full bg-[#120a05] border-2 border-[#3f2413] text-amber-100 rounded-xl px-3 py-2 font-pixel text-xs"
               />
             </div>
+          </div>
+        </div>
+
+        {/* 2b. Daily protein */}
+        <div className="pixel-box-wood p-4 rounded-2xl space-y-3">
+          <div className="space-y-1">
+            <label className="font-pixel text-xs text-amber-300 flex items-center gap-1.5">
+              <span>💪</span> {t('DAILY PROTEIN (G)')}
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="400"
+              value={proteinTarget}
+              onChange={(e) => { setProteinTarget(e.target.value); markDirty(); }}
+              className="w-full bg-[#120a05] border-2 border-[#3f2413] text-amber-100 rounded-xl px-3 py-2 font-pixel text-xs focus:outline-none focus:border-amber-500"
+              placeholder={String(proteinAutoTargetG(parseFloat(latestKg || currentWeight) || 70, goalDir))}
+            />
+            <p className="text-[9px] font-pixel text-amber-300/50">{t('Rough guideline, not medical advice.')}</p>
           </div>
         </div>
 

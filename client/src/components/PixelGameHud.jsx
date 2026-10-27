@@ -8,7 +8,8 @@ export default function PixelGameHud({
   targetMax = 1550,
   totalWaterMl = 0,
   waterTarget = 2500,
-  proteinHit = false,
+  proteinG = 0,
+  proteinTargetG = 0,
   energyLevel = 100,
   streakDays = 0,
   goalDirection = 'maintain',
@@ -21,7 +22,8 @@ export default function PixelGameHud({
   const calGoal = gaining ? targetMin : targetMax;
   const calPercent = Math.min(100, Math.max(0, (totalCals / (calGoal || 1)) * 100));
   const waterPercent = Math.min(100, Math.max(0, (totalWaterMl / waterTarget) * 100));
-  const proteinPercent = proteinHit ? 100 : 8;
+  const proteinReached = proteinTargetG > 0 && proteinG >= proteinTargetG;
+  const proteinPercent = proteinTargetG > 0 ? Math.min(100, Math.max(0, (proteinG / proteinTargetG) * 100)) : 0;
 
   return (
     <div className="w-full px-4 pt-2 pb-1 space-y-3">
@@ -127,7 +129,7 @@ export default function PixelGameHud({
             </div>
             <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-cyan-200/70">
               <span>{t('PROTEIN')}</span>
-              <span>{proteinHit ? t('Goal hit!') : t('Not yet')}</span>
+              <span><bdi dir="ltr">{proteinG} / {proteinTargetG}</bdi> {t('g')}{proteinReached ? ' ✓' : ''}</span>
             </div>
           </div>
         </div>

@@ -26,6 +26,8 @@ export default function MascotWidget({
   level = 1,
   comeback = false, // one-time welcome-back greeting
   onComebackShown,
+  proteinGoalReached = false, // one-time celebration when the daily protein goal is reached
+  onProteinCelebrated,
   onOpenWeighIn,
   onTaunt,
   onXpGained,
@@ -56,6 +58,14 @@ export default function MascotWidget({
     setTimeout(() => setBubbleText(null), 6000);
     onComebackShown?.();
   }, [comeback]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One-time celebration when today's protein goal is reached
+  useEffect(() => {
+    if (!proteinGoalReached) return;
+    setBubbleText(t('Protein goal reached! {name} feels strong 💪', { name: slothName }));
+    setTimeout(() => setBubbleText(null), 6000);
+    onProteinCelebrated?.();
+  }, [proteinGoalReached]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 1. Calculate time, elapsed meal duration & human-like schedule
   const now = new Date();

@@ -64,31 +64,6 @@ function WaterWidget({ totalMl = 0, onAdd }) {
   );
 }
 
-// --- Protein Crystal Widget ---
-function ProteinWidget({ hit = false, onToggle }) {
-  return (
-    <motion.button
-      id="protein-widget"
-      whileTap={{ scale: 0.94 }}
-      onClick={onToggle}
-      className={`pixel-box-wood flex-1 p-3 rounded-2xl flex flex-col gap-1.5 cursor-pointer text-start transition-all ${
-        hit ? 'border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.3)]' : ''
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-lg">{hit ? '🥩' : '🍗'}</span>
-        <span className="text-[9px] font-pixel text-amber-300 bg-[#351c0d] px-1.5 py-0.5 rounded border border-amber-800">
-          {t('FLOOR')}
-        </span>
-      </div>
-      <div className={`text-base font-pixel ${hit ? 'text-emerald-300' : 'text-stone-300'}`}>
-        {hit ? t('HIT! ✓') : t('TAP LOG')}
-      </div>
-      <span className="text-[10px] font-pixel text-amber-200/70">{t('80–100g target')}</span>
-    </motion.button>
-  );
-}
-
 // --- Workout Training Widget ---
 function WorkoutWidget({ onLog }) {
   const [open, setOpen] = useState(false);
@@ -229,17 +204,14 @@ function BedtimeWidget({ bedtimeTime = '23:00' }) {
 // --- Main QuickWidgets export ---
 export default function QuickWidgets({
   totalWaterMl,
-  proteinHit,
   bedtimeTime,
   onAddWater,
-  onToggleProtein,
   onLogWorkout,
 }) {
   return (
     <div className="space-y-2.5 max-w-sm mx-auto">
       <div className="flex gap-2.5">
         <WaterWidget totalMl={totalWaterMl} onAdd={onAddWater} />
-        <ProteinWidget hit={proteinHit} onToggle={onToggleProtein} />
       </div>
       <div className="flex gap-2.5">
         <WorkoutWidget onLog={onLogWorkout} />

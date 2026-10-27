@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PixelGameHud from '../components/PixelGameHud';
 import MascotWidget from '../components/MascotWidget';
@@ -18,6 +18,8 @@ export default function DashboardView() {
     totalCals: 0,
     totalWaterMl: 0,
     proteinHit: false,
+    proteinG: 0,
+    proteinTargetG: 0,
     targetMin: 1450,
     targetMax: 1550,
     energyLevel: 100,
@@ -44,6 +46,8 @@ export default function DashboardView() {
   const [isDancing, setIsDancing] = useState(false);
   const [eatingFood, setEatingFood] = useState(null);
   const [isDrinking, setIsDrinking] = useState(false);
+  const [proteinGoalReached, setProteinGoalReached] = useState(false);
+  const prevProteinHit = useRef(null); // null until the first load, so opening the app never celebrates
 
   // Weekly checkin state
   const [checkinData, setCheckinData] = useState({
@@ -68,6 +72,10 @@ export default function DashboardView() {
       const checkinInfo = await checkinRes.json();
 
       setDashboard(dashData);
+      if (dashData && !dashData.error) {
+        if (prevProteinHit.current === false && dashData.proteinHit) setProteinGoalReached(true);
+        prevProteinHit.current = !!dashData.proteinHit;
+      }
       if (dashData && dashData.comeback) setComebackGreeting(true);
       setRecipes(recipeData.recipes || []);
       if (checkinInfo && !checkinInfo.error) {
@@ -132,6 +140,7 @@ export default function DashboardView() {
             calories: item.cals,
             mealType: defaultMealType,
             source: 'recipe_exact',
+            proteinG: item.proteinG || 0,
             notes: `Fed to Sloth via quick dock ${item.emoji}`,
           }),
         });
@@ -142,14 +151,6 @@ export default function DashboardView() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ml: item.waterMl }),
-        });
-      }
-
-      if (item.setProteinHit) {
-        await api('/api/log/protein', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hit: true }),
         });
       }
 
@@ -167,16 +168,6 @@ export default function DashboardView() {
     });
     playSound.water();
     triggerDrink();
-    fetchDashboard();
-  }
-
-  async function handleToggleProtein() {
-    playSound.checkin();
-    await api('/api/log/protein', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hit: !dashboard.proteinHit }),
-    });
     fetchDashboard();
   }
 
@@ -215,6 +206,8 @@ export default function DashboardView() {
           targetMin={dashboard.targetMin}
           targetMax={dashboard.targetMax}
           totalWaterMl={dashboard.totalWaterMl}
+          proteinG={dashboard.proteinG}
+          proteinTargetG={dashboard.proteinTargetG}
           proteinHit={dashboard.proteinHit}
           energyLevel={dashboard.energyLevel}
           streakDays={dashboard.totalDays ?? dashboard.streakDays}
@@ -239,6 +232,8 @@ export default function DashboardView() {
             level={dashboard.level || 1}
             comeback={comebackGreeting}
             onComebackShown={() => setComebackGreeting(false)}
+            proteinGoalReached={proteinGoalReached}
+            onProteinCelebrated={() => setProteinGoalReached(false)}
             goalDirection={goalDirection}
             progressPercent={checkinData.progressPercent}
             weightProgress={checkinData.progressKg}
@@ -293,10 +288,8 @@ export default function DashboardView() {
               >
                 <QuickWidgets
                   totalWaterMl={dashboard.totalWaterMl}
-                  proteinHit={dashboard.proteinHit}
                   bedtimeTime={dashboard.bedtimeReminderTime}
                   onAddWater={handleAddWater}
-                  onToggleProtein={handleToggleProtein}
                   onLogWorkout={handleWorkout}
                 />
               </motion.div>

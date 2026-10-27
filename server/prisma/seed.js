@@ -42,7 +42,7 @@ async function main() {
   await prisma.dailyLog.createMany({
     data: [
       { userId: user.id, mealType: 'breakfast', inputMode: 'recipe', recipeId: oats.id, weightGram: 250 },
-      { userId: user.id, mealType: 'lunch', inputMode: 'recipe', recipeId: chicken.id, weightGram: 200, proteinHit: true },
+      { userId: user.id, mealType: 'lunch', inputMode: 'recipe', recipeId: chicken.id, weightGram: 200 },
       { userId: user.id, mealType: 'water', inputMode: 'recipe', waterMl: 250 },
       { userId: user.id, mealType: 'water', inputMode: 'recipe', waterMl: 250 },
     ],

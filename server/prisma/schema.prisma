@@ -29,6 +29,7 @@ model UserConfig {
   sex                    String?
   birthYear              Int?
   slothName              String?
+  proteinTargetG         Int? // null = automatic from weight
   setupDone              Boolean? // null = account from before onboarding existed = done
   notificationSoundsJson String   @default("{\"meal\":\"bell\",\"bedtime\":\"winddown\",\"workout\":\"tick\",\"checkin\":\"harp\"}")
   updatedAt              DateTime @updatedAt
@@ -49,6 +50,7 @@ model AvatarState {
   tapXpDay    String?
   tapXpToday  Int      @default(0)
   comebackDay String?
+  proteinXpDay String?
   updatedAt   DateTime @updatedAt
 }
 
@@ -78,7 +80,8 @@ model DailyLog {
   aiEstimatedCalsMax Int?
   aiBreakdown        String?
   waterMl            Int      @default(0)
-  proteinHit         Boolean  @default(false)
+  proteinHit         Boolean  @default(false) // legacy protein-check logs only
+  proteinG           Float? // null = log from before gram tracking
   recipe             Recipe?  @relation(fields: [recipeId], references: [id])
   createdAt          DateTime @default(now())
 }

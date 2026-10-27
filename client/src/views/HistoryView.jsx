@@ -142,6 +142,7 @@ export default function HistoryView() {
                     ) : (
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                         {d.calories > 0 && <Chip emoji="🍗" tone="text-orange-200">{d.calories}</Chip>}
+                        {d.proteinG > 0 && <Chip emoji="💪" tone="text-cyan-200">{t('{n}g protein', { n: Math.round(d.proteinG) })}</Chip>}
                         {d.waterMl > 0 && <Chip emoji="💧" tone="text-cyan-200">{t('{n} L', { n: litres(d.waterMl) })}</Chip>}
                         {minutes > 0 && <Chip emoji="⚔️" tone="text-purple-200">{t('{n} min', { n: minutes })}</Chip>}
                         {d.weighIn && <Chip emoji="⚖️">{t('{n}kg', { n: d.weighIn })}</Chip>}
@@ -167,7 +168,7 @@ export default function HistoryView() {
                               <EntryRow
                                 key={m.id}
                                 time={m.time}
-                                right={t('{n} kcal', { n: m.calories })}
+                                right={m.proteinG > 0 ? `${t('{n} kcal', { n: m.calories })} · ${t('{n}g protein', { n: Math.round(m.proteinG) })}` : t('{n} kcal', { n: m.calories })}
                                 onDelete={() => remove('log', m.id)}
                               >
                                 {m.name || t(m.mealType)}
@@ -200,7 +201,9 @@ export default function HistoryView() {
                             ))}
                           </div>
                         )}
-                        {d.proteinHit && <div className="text-[10px] font-pixel text-emerald-300">{t('Protein goal hit ✓')}</div>}
+                        {d.proteinG > 0
+                          ? <div className="text-[10px] font-pixel text-emerald-300">{t('{n}g protein', { n: Math.round(d.proteinG) })}{d.proteinHit ? ' ✓' : ''}</div>
+                          : d.proteinHit && <div className="text-[10px] font-pixel text-emerald-300">{t('Protein goal hit ✓')}</div>}
                       </div>
                     </motion.div>
                   )}

@@ -5,7 +5,7 @@ import { offlineEstimate } from './offlineEstimate';
 import { askAi } from './aiRouter';
 import { starterRecipes } from './starterRecipes';
 import { getLang } from '../utils/i18n';
-import { goalDirectionOf, isOverComfort } from '../utils/goal';
+import { goalDirectionOf, isOverComfort, proteinAutoTargetG } from '../utils/goal';
 
 const WATER_GOAL_ML = 2500;
 const DEFAULT_CONFIG = {
@@ -24,7 +24,7 @@ const DEFAULT_CONFIG = {
 
 const AVATAR_DEFAULTS = {
   totalDays: 0, lastLogDay: null, xp: 0, level: 1,
-  logXpDay: null, logXpToday: 0, tapXpDay: null, tapXpToday: 0, comebackDay: null,
+  logXpDay: null, logXpToday: 0, tapXpDay: null, tapXpToday: 0, comebackDay: null, proteinXpDay: null,
 };
 const LOG_XP = { meal: 10, water: 3, protein: 5, weighin: 10 };
 const LOG_XP_CAP = 40;
@@ -102,6 +102,22 @@ async function avatarTap(kind) {
 
 const recipeById = (id) => (read('recipes') || []).find((r) => r.id === id);
 
+// Protein in grams for one log: recipe-mode logs are computed from the recipe, others use what was saved.
+function logProtein(log) {
+  if (log.mealType === 'protein-check') return 0;
+  const recipe = log.recipeId ? recipeById(log.recipeId) : null;
+  if (log.inputMode === 'recipe' && recipe && log.weightGram) return (log.weightGram * (recipe.proteinPer100g || 0)) / 100;
+  return log.proteinG || 0;
+}
+
+// Effective daily protein target: the custom one if set, else the guideline from the latest weigh-in.
+function proteinTarget(config) {
+  if (config.proteinTargetG) return config.proteinTargetG;
+  const checkins = read('checkins') || [];
+  const weight = checkins.length ? checkins[checkins.length - 1].weightKg : config.startWeightKg || 70;
+  return proteinAutoTargetG(weight, goalDirectionOf(config.startWeightKg || 70, config.targetWeightKg || 60));
+}
+
 function logCalories(log) {
   const recipe = log.recipeId ? recipeById(log.recipeId) : null;
   if (log.inputMode === 'recipe' && recipe && log.weightGram) return (log.weightGram / 100) * recipe.baseCalsPer100g;
@@ -114,14 +130,11 @@ async function dashboard() {
   const config = read('config');
   const start = startOfToday();
   const today = read('logs').filter((l) => new Date(l.createdAt) >= start);
-  let totalCals = 0, totalWaterMl = 0, mealProteinHit = false, lastMealAt = null;
-  let lastProteinCheck = null;
+  let totalCals = 0, totalWaterMl = 0, totalProtein = 0, lastMealAt = null;
   const loggedMealTypes = [];
   for (const log of today) {
     totalWaterMl += log.waterMl || 0;
-    if (log.mealType === 'protein-check') {
-      if (!lastProteinCheck || new Date(log.createdAt) >= new Date(lastProteinCheck.createdAt)) lastProteinCheck = log;
-    } else if (log.proteinHit) mealProteinHit = true;
+    totalProtein += logProtein(log);
     const cals = logCalories(log);
     totalCals += cals;
     if (cals > 0 || (log.mealType && log.mealType !== 'water' && log.mealType !== 'protein-check')) {
@@ -129,8 +142,9 @@ async function dashboard() {
       if (!lastMealAt || new Date(log.createdAt) > new Date(lastMealAt)) lastMealAt = log.createdAt;
     }
   }
-  // The latest protein check of the day wins, so the toggle can be undone; meals count only without one.
-  const proteinHit = lastProteinCheck ? !!lastProteinCheck.proteinHit : mealProteinHit;
+  const proteinG = Math.round(totalProtein);
+  const proteinTargetG = proteinTarget(config);
+  const proteinHit = proteinG >= proteinTargetG;
   const targetMin = config.dailyCaloricTargetMin || 1450;
   const targetMax = config.dailyCaloricTargetMax || 1550;
   const energyLevel = Math.min(100, Math.round((totalCals / targetMax) * 100));
@@ -154,6 +168,8 @@ async function dashboard() {
   return ok({
     totalCals: Math.round(totalCals),
     totalWaterMl,
+    proteinG,
+    proteinTargetG,
     proteinHit,
     targetMin,
     targetMax,
@@ -188,6 +204,7 @@ async function addLog(fields, progressKind = 'meal') {
     aiEstimatedCalsMax: null,
     waterMl: 0,
     proteinHit: false,
+    proteinG: null,
     ...fields,
   };
   await write('logs', [...read('logs'), log]);
@@ -210,8 +227,20 @@ async function logMeal(b) {
     aiEstimatedCalsMin: min || null,
     aiEstimatedCalsMax: max || null,
     proteinHit: b.proteinHit || false,
+    proteinG: Number.isFinite(+b.proteinG) && b.proteinG !== null && b.proteinG !== '' && +b.proteinG >= 0 ? +b.proteinG : null,
     createdAt: clampCreatedAt(b.createdAt),
   });
+  // Crossing today's protein target earns the one-time protein XP (a backdated meal doesn't trigger it).
+  const av = getAvatar();
+  const todayKey = dayKey(new Date());
+  if (av.proteinXpDay !== todayKey) {
+    const start = startOfToday();
+    const total = read('logs').filter((l) => new Date(l.createdAt) >= start).reduce((s, l) => s + logProtein(l), 0);
+    if (total > 0 && Math.round(total) >= proteinTarget(read('config'))) {
+      await write('avatar', { ...getAvatar(), proteinXpDay: todayKey });
+      await recordLogProgress('protein');
+    }
+  }
   return ok({ success: true, log, calculatedCals: Math.round(logCalories(log)) || null });
 }
 
@@ -256,9 +285,10 @@ function history(days) {
   for (let i = 0; i < days; i++) {
     const d = new Date(since);
     d.setDate(since.getDate() + i);
-    byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
+    byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinG: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
   }
-  const lastCheck = new Map(), mealProtein = new Set();
+  const proteinG = proteinTarget(config);
+  const lastCheck = new Map(), mealProtein = new Set(), rawProtein = new Map();
   for (const log of read('logs')) {
     const day = byDay.get(dayKey(log.createdAt));
     if (!day) continue;
@@ -272,12 +302,18 @@ function history(days) {
     } else {
       const calories = Math.round(logCalories(log));
       day.calories += calories;
+      const proteinG = Math.round(logProtein(log));
+      rawProtein.set(day, (rawProtein.get(day) || 0) + logProtein(log));
       if (log.proteinHit) mealProtein.add(day);
-      day.meals.push({ id: log.id, name: log.rawText || recipeById(log.recipeId)?.name || '', mealType: log.mealType, calories, time: clock(log.createdAt) });
+      day.meals.push({ id: log.id, name: log.rawText || recipeById(log.recipeId)?.name || '', mealType: log.mealType, calories, proteinG, time: clock(log.createdAt) });
     }
   }
   for (const day of byDay.values()) {
-    day.proteinHit = lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
+    day.proteinG = Math.round(rawProtein.get(day) || 0);
+    // Days with grams use the target; older days keep their tick from the old protein check.
+    day.proteinHit = day.proteinG > 0
+      ? day.proteinG >= proteinG
+      : lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
   }
   for (const w of read('workouts')) {
     const day = byDay.get(dayKey(w.date));
@@ -292,7 +328,7 @@ function history(days) {
   const avg = (fn) => (active.length ? Math.round(active.reduce((s, d) => s + fn(d), 0) / active.length) : 0);
   return ok({
     days: list,
-    targets: { calMin: config.dailyCaloricTargetMin, calMax: config.dailyCaloricTargetMax, waterMl: WATER_GOAL_ML },
+    targets: { calMin: config.dailyCaloricTargetMin, calMax: config.dailyCaloricTargetMax, waterMl: WATER_GOAL_ML, proteinG },
     summary: {
       activeDays: active.length,
       avgCalories: avg((d) => d.calories),
@@ -415,6 +451,12 @@ async function saveSettings(b) {
     const y = Number(b.birthYear);
     if (Number.isInteger(y) && y >= 1900 && y <= new Date().getFullYear() - 10) c.birthYear = y;
   }
+  // proteinTargetG: null or '' clears it; an integer 1-400 sets it; anything else is ignored.
+  if (b.proteinTargetG === null || b.proteinTargetG === '') c.proteinTargetG = null;
+  else if (b.proteinTargetG !== undefined) {
+    const p = Number(b.proteinTargetG);
+    if (Number.isInteger(p) && p >= 1 && p <= 400) c.proteinTargetG = p;
+  }
   // slothName: null, '' or blank clears it; a trimmed 1-20 character string sets it; anything else is ignored.
   if (b.slothName === null || b.slothName === '') c.slothName = null;
   else if (typeof b.slothName === 'string') {
@@ -451,20 +493,15 @@ async function route(method, path, query, body) {
     case method === 'DELETE' && seg[0] === 'recipes':
       await write('recipes', read('recipes').filter((r) => r.id !== seg[1]));
       return ok({ success: true });
-    case key === 'GET settings': return ok({ ...read('config') });
+    case key === 'GET settings': {
+      const checkins = read('checkins') || [];
+      return ok({ ...read('config'), latestWeighInKg: checkins.length ? checkins[checkins.length - 1].weightKg : null });
+    }
     case key === 'POST settings': return saveSettings(body);
     case key === 'POST log/meal': return logMeal(body);
     case key === 'POST log/water': {
       const ml = body.ml ?? 250;
       return ok({ success: true, added: ml, log: await addLog({ mealType: 'water', waterMl: ml, createdAt: clampCreatedAt(body.createdAt) }, 'water') });
-    }
-    case key === 'POST log/protein': {
-      const hit = body.hit ?? true;
-      // Only the first hit of a day counts as progress, so toggling off and on can't farm XP.
-      const start = startOfToday();
-      const hitBefore = read('logs').some((l) => l.mealType === 'protein-check' && l.proteinHit && new Date(l.createdAt) >= start);
-      const progress = hit && !hitBefore ? 'protein' : null;
-      return ok({ success: true, proteinHit: hit, log: await addLog({ mealType: 'protein-check', proteinHit: hit, createdAt: clampCreatedAt(body.createdAt) }, progress) });
     }
     case key === 'POST log/workout': {
       const w = { id: newId(), date: new Date().toISOString(), type: body.type || 'cardio', durationMin: body.durationMin || 30, notes: body.notes || null };

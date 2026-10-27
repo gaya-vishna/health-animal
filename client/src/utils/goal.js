@@ -18,3 +18,9 @@ export function remainingCals(dir, total, min, max) {
 export function isOverComfort(dir, total, max) {
   return dir === 'gain' ? total > max * 1.25 : total > max;
 }
+
+// Rough daily protein guideline in grams (about 1.2 g per kg, 1.5 g per kg when gaining). Not medical advice.
+export function proteinAutoTargetG(weightKg, dir) {
+  const w = +weightKg > 0 ? +weightKg : 70;
+  return Math.round(w * (dir === 'gain' ? 1.5 : 1.2));
+}

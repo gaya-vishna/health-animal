@@ -1,4 +1,5 @@
 const express = require('express');
+const { goalDirectionOf, proteinAutoTargetG } = require('../lib/goal');
 const { PrismaClient } = require('@prisma/client');
 
 const router = express.Router();
@@ -21,6 +22,15 @@ function logCalories(log) {
   return 0;
 }
 
+// Grams of protein in one log: recipe math when there is a weight, otherwise what was saved.
+function logProtein(log) {
+  if (log.mealType === 'protein-check') return 0;
+  if (log.inputMode === 'recipe' && log.recipe && log.weightGram) {
+    return (log.weightGram * (log.recipe.proteinPer100g || 0)) / 100;
+  }
+  return log.proteinG || 0;
+}
+
 // GET /api/history?days=7|30  -> one entry per day, newest first (empty days included)
 router.get('/history', async (req, res) => {
   try {
@@ -30,18 +40,23 @@ router.get('/history', async (req, res) => {
     since.setHours(0, 0, 0, 0);
 
     const where = { userId: req.userId };
-    const [config, logs, workouts, weighIns] = await Promise.all([
+    const [config, logs, workouts, weighIns, latestWeighIn] = await Promise.all([
       prisma.userConfig.findUnique({ where: { userId: req.userId } }),
       prisma.dailyLog.findMany({ where: { ...where, createdAt: { gte: since } }, include: { recipe: true }, orderBy: { createdAt: 'asc' } }),
       prisma.workoutLog.findMany({ where: { ...where, date: { gte: since } }, orderBy: { date: 'asc' } }),
       prisma.weeklyCheckin.findMany({ where: { ...where, createdAt: { gte: since } }, orderBy: { createdAt: 'asc' } }),
+      prisma.weeklyCheckin.findFirst({ where, orderBy: { createdAt: 'desc' } }),
     ]);
+
+    const weight = latestWeighIn?.weightKg || config?.startWeightKg || 70;
+    const proteinTargetG = config?.proteinTargetG
+      || proteinAutoTargetG(weight, goalDirectionOf(config?.startWeightKg || 70, config?.targetWeightKg || 60));
 
     const byDay = new Map();
     for (let i = 0; i < days; i++) {
       const d = new Date(since);
       d.setDate(since.getDate() + i);
-      byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
+      byDay.set(dayKey(d), { date: dayKey(d), calories: 0, waterMl: 0, proteinG: 0, proteinHit: false, meals: [], water: [], workouts: [], weighIn: null });
     }
 
     const lastCheck = new Map(), mealProtein = new Set();
@@ -58,18 +73,23 @@ router.get('/history', async (req, res) => {
       } else {
         const calories = logCalories(log);
         day.calories += calories;
+        const proteinG = Math.round(logProtein(log));
+        day.proteinG += proteinG;
         if (log.proteinHit) mealProtein.add(day);
         day.meals.push({
           id: log.id,
           name: log.rawText || log.recipe?.name || '',
           mealType: log.mealType,
           calories,
+          proteinG,
           time: clock(log.createdAt),
         });
       }
     }
     for (const day of byDay.values()) {
-      day.proteinHit = lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
+      // Old days (no grams) keep their protein-check tick.
+      const legacy = lastCheck.has(day) ? !!lastCheck.get(day).proteinHit : mealProtein.has(day);
+      day.proteinHit = day.proteinG > 0 ? day.proteinG >= proteinTargetG : legacy;
     }
 
     for (const w of workouts) {
@@ -91,6 +111,7 @@ router.get('/history', async (req, res) => {
         calMin: config?.dailyCaloricTargetMin || 1450,
         calMax: config?.dailyCaloricTargetMax || 1550,
         waterMl: WATER_GOAL_ML,
+        proteinG: proteinTargetG,
       },
       summary: {
         activeDays: active.length,

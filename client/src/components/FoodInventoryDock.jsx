@@ -7,7 +7,7 @@ const DOCK_ITEMS = [
   { id: 'apple', emoji: '🍎', label: 'Apple', cals: 80, waterMl: 50, proteinG: 0, tag: '+80 KCAL 🍎' },
   { id: 'watermelon', emoji: '🍉', label: 'Melon', cals: 60, waterMl: 300, proteinG: 1, tag: '+300ml 💧' },
   { id: 'sushi', emoji: '🍣', label: 'Sushi', cals: 380, waterMl: 100, proteinG: 22, tag: '+380 KCAL 🍣' },
-  { id: 'protein', emoji: '🥩', label: 'Steak', cals: 250, waterMl: 0, proteinG: 32, setProteinHit: true, tag: '+32g PROTEIN 🔥' },
+  { id: 'protein', emoji: '🥩', label: 'Steak', cals: 250, waterMl: 0, proteinG: 32, tag: '+32g PROTEIN 🔥' },
   { id: 'onigiri', emoji: '🍙', label: 'Onigiri', cals: 180, waterMl: 0, proteinG: 4, tag: '+180 KCAL 🍙' },
 ];
 
