@@ -136,6 +136,7 @@ export default function SettingsView() {
   const [mealTimes, setMealTimes] = useState(['09:30', '13:30', '18:00', '21:00']);
   const [prefs, setPrefs] = useState(getReminderPrefs());
   const [testMsg, setTestMsg] = useState('');
+  const [troubleOpen, setTroubleOpen] = useState(false);
   const native = isNativeApp();
   const restoreRef = useRef();
   const [dataMsg, setDataMsg] = useState('');
@@ -689,10 +690,6 @@ export default function SettingsView() {
                     </span>
                   </button>
                 ))}
-                <button type="button" onClick={handleTest} className="w-full py-2.5 rounded-xl pixel-btn-wood text-[10px] font-pixel cursor-pointer">
-                  {t('SEND A TEST REMINDER')}
-                </button>
-                {testMsg && <p className="text-[10px] font-pixel text-emerald-300">{testMsg}</p>}
                 <p className="text-[9px] font-pixel text-amber-300/50">{t('Meal reminders are skipped for meals you already logged.')}</p>
               </>
             ) : (
@@ -768,6 +765,33 @@ export default function SettingsView() {
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] font-pixel text-emerald-300/80 break-all">{apiUrl}</span>
             </div>
+          </div>
+        )}
+
+        {native && (
+          <div className="pixel-box-wood p-4 rounded-2xl space-y-3">
+            <button
+              type="button"
+              onClick={() => setTroubleOpen((o) => !o)}
+              aria-expanded={troubleOpen}
+              className="w-full flex items-center justify-between gap-2 cursor-pointer"
+            >
+              <span className="font-pixel text-xs text-amber-300 flex items-center gap-1.5 text-start">
+                {t('🔧 Not getting reminders?')}
+              </span>
+              <span className="text-amber-300 text-xs shrink-0" aria-hidden="true">{troubleOpen ? '▲' : '▼'}</span>
+            </button>
+            {troubleOpen && (
+              <>
+                <p className="text-[10px] font-pixel text-amber-200/70">
+                  {t("If no notification arrives within 5 seconds, allow notifications for the app in Android settings, and check that battery saver isn't blocking it.")}
+                </p>
+                <button type="button" onClick={handleTest} className="w-full py-2.5 rounded-xl pixel-btn-wood text-[10px] font-pixel cursor-pointer">
+                  {t('SEND A TEST REMINDER')}
+                </button>
+                {testMsg && <p className="text-[10px] font-pixel text-emerald-300">{testMsg}</p>}
+              </>
+            )}
           </div>
         )}
 

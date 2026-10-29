@@ -715,5 +715,7 @@ export default {
   "Everyone fell asleep mid-story. {name} says it was his best night ever. Goodnight.": "כולם נרדמו באמצע הסיפור. {name} אומר שזה היה הלילה הכי טוב שלו. לילה טוב.",
   "{name}'s Week · {n}/7": "השבוע של {name} · {n}/7",
   "Smart timing (learns your usual meal times)": "תזמון חכם (לומד מתי אתם בדרך כלל אוכלים)",
-  "{name}'s Week: a bedtime story": "השבוע של {name}: סיפור לפני השינה"
+  "{name}'s Week: a bedtime story": "השבוע של {name}: סיפור לפני השינה",
+  "🔧 Not getting reminders?": "🔧 לא מקבלים תזכורות?",
+  "If no notification arrives within 5 seconds, allow notifications for the app in Android settings, and check that battery saver isn't blocking it.": "אם לא מגיעה התראה תוך 5 שניות, אפשרו התראות לאפליקציה בהגדרות האנדרואיד ובדקו שחיסכון בסוללה לא חוסם אותה."
 };
