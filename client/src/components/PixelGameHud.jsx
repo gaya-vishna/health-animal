@@ -60,7 +60,7 @@ export default function PixelGameHud({
               💎
             </div>
             <span className="font-pixel text-[11px] text-pink-200 tracking-wider">
-              {streakDays} <span className="text-[8px] text-pink-400/80">{t('days together')}</span>
+              {streakDays} <span className="text-[10px] text-pink-400/80">{t('days together')}</span>
             </span>
           </div>
           <div className="w-4 h-4 rounded bg-rose-600/60 border border-rose-500/80 flex items-center justify-center text-[10px] text-pink-200 font-pixel font-bold">
@@ -81,7 +81,7 @@ export default function PixelGameHud({
               <motion.div
                 className="h-full rounded-full bg-gradient-to-r from-teal-500 to-amber-400 shadow-inner"
                 initial={{ width: 0 }}
-                animate={{ width: `${Math.max(4, calPercent)}%` }}
+                animate={{ width: `${calPercent > 0 ? Math.max(4, calPercent) : 0}%` }}
                 transition={{ type: 'spring', damping: 15, stiffness: 120 }}
               />
             </div>
@@ -102,7 +102,7 @@ export default function PixelGameHud({
               <motion.div
                 className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 shadow-inner"
                 initial={{ width: 0 }}
-                animate={{ width: `${Math.max(4, waterPercent)}%` }}
+                animate={{ width: `${waterPercent > 0 ? Math.max(4, waterPercent) : 0}%` }}
                 transition={{ type: 'spring', damping: 15, stiffness: 120 }}
               />
             </div>
@@ -114,6 +114,7 @@ export default function PixelGameHud({
         </div>
 
         {/* 💪 Protein Bar */}
+        {proteinTargetG > 0 ? (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#2b170c] border-2 border-[#160c06] flex items-center justify-center text-base shadow-sm shrink-0">
             💪
@@ -123,16 +124,24 @@ export default function PixelGameHud({
               <motion.div
                 className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-teal-400 shadow-inner"
                 initial={{ width: 0 }}
-                animate={{ width: `${Math.max(4, proteinPercent)}%` }}
+                animate={{ width: `${proteinPercent > 0 ? Math.max(4, proteinPercent) : 0}%` }}
                 transition={{ type: 'spring', damping: 15, stiffness: 120 }}
               />
             </div>
-            <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-cyan-200/70">
+            <div className="flex justify-between items-center px-1 mt-0.5 text-[10px] font-pixel text-cyan-200/80">
               <span>{t('PROTEIN')}</span>
               <span><bdi dir="ltr">{proteinG} / {proteinTargetG}</bdi> {t('g')}{proteinReached ? ' ✓' : ''}</span>
             </div>
           </div>
         </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#2b170c] border-2 border-[#160c06] flex items-center justify-center text-base shadow-sm shrink-0">
+              💪
+            </div>
+            <span className="text-[11px] font-pixel text-cyan-200/80">{t('Set your weight in Settings to get a protein goal')}</span>
+          </div>
+        )}
       </div>
     </div>
   );

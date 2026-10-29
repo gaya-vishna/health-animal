@@ -8,8 +8,12 @@ import {
   normalizeEstimate,
   buildSurprisePrompt,
 } from '../../../shared/aiPrompts.mjs';
+import * as prompts from '../../../shared/aiPrompts.mjs';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { offlineEstimate } from './offlineEstimate';
+
+// normalizeSuggestions comes from shared/aiPrompts.mjs (task C1); pass the list through until it lands.
+const normalizeSuggestions = prompts.normalizeSuggestions || ((v) => (Array.isArray(v) ? v : []));
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -37,23 +41,37 @@ async function http(method, url, key, data, ms) {
   }
 }
 
+const fail = (reason, message) => Object.assign(new Error(message || reason), { reason });
+
 // Tries each model in turn; overload/quota/retired-model responses move on to the next one.
+// Errors carry .reason: 'bad_key' | 'quota' | 'network' | 'bad_reply'.
 async function generate(key, parts, temperature) {
-  let lastErr = new Error('Gemini request failed');
+  let lastErr = fail('network', 'Gemini request failed');
   for (const model of GEMINI_MODELS) {
-    const { status, json } = await http(
-      'POST',
-      `${BASE}/models/${model}:generateContent`,
-      key,
-      { contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature } },
-      60000
-    );
+    let res;
+    try {
+      res = await http(
+        'POST',
+        `${BASE}/models/${model}:generateContent`,
+        key,
+        { contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature } },
+        60000
+      );
+    } catch {
+      throw fail('network', 'Gemini unreachable');
+    }
+    const { status, json } = res;
     if (status >= 200 && status < 300) {
       const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error('Empty response from Gemini');
-      return JSON.parse(text);
+      if (!text) throw fail('bad_reply', 'Empty response from Gemini');
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw fail('bad_reply', 'Unreadable response from Gemini');
+      }
     }
-    lastErr = new Error(`Gemini ${status}`);
+    if (status === 400 || status === 401 || status === 403) throw fail('bad_key', `Gemini ${status}`);
+    lastErr = fail(status === 429 ? 'quota' : 'network', `Gemini ${status}`);
     if (![429, 503, 404].includes(status)) throw lastErr;
   }
   throw lastErr;
@@ -84,16 +102,18 @@ export async function estimateDish(key, body, lang) {
 export async function surprise(key, body, lang) {
   const remaining = Math.max(100, body.remainingCals || 500);
   const prompt = buildSurprisePrompt({ remaining, savedRecipes: body.savedRecipes, goalDirection: body.goalDirection, lang });
-  const suggestions = await generate(key, [{ text: prompt }], SURPRISE_TEMPERATURE);
-  if (!Array.isArray(suggestions)) throw new Error('Unexpected Gemini reply');
+  const parsed = await generate(key, [{ text: prompt }], SURPRISE_TEMPERATURE);
+  const suggestions = normalizeSuggestions(parsed);
+  if (!Array.isArray(suggestions) || !suggestions.length) throw fail('bad_reply', 'Unexpected Gemini reply');
   return { suggestions };
 }
 
-// 'ok' | 'invalid' | 'network'
+// 'ok' | 'invalid' | 'quota' | 'network'
 export async function testKey(key) {
   try {
     const { status } = await http('GET', `${BASE}/models?pageSize=1`, key, null, 15000);
     if (status >= 200 && status < 300) return 'ok';
+    if (status === 429) return 'quota';
     return status === 400 || status === 401 || status === 403 ? 'invalid' : 'network';
   } catch {
     return 'network';

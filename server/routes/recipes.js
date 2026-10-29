@@ -1,5 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const V = require('../lib/validate');
+const { sendError } = V;
 const aiRouter = require('./ai');
 
 const router = express.Router();
@@ -11,8 +13,7 @@ router.get('/recipes', async (req, res) => {
     const recipes = await prisma.recipe.findMany({ where: { userId: req.userId }, orderBy: { name: 'asc' } });
     res.json({ recipes });
   } catch (err) {
-    console.error('❌ Get recipes error:', err);
-    res.status(500).json({ error: 'Failed to fetch recipes', details: err.message });
+    sendError(res, err, '❌ Get recipes error:');
   }
 });
 
@@ -20,25 +21,29 @@ router.get('/recipes', async (req, res) => {
 // Automatically calculates calories and protein via AI if not supplied!
 router.post('/recipes', async (req, res) => {
   try {
-    let { name, baseCalsPer100g, proteinPer100g, notes, description, weightGram, servingGrams } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Dish name is required.' });
-    }
+    const body = req.body || {};
+    const name = V.str(body.name, { max: 100, required: true, label: 'Dish name' });
+    let notes = V.str(body.notes, { max: 500, label: 'Notes' });
+    const description = V.str(body.description, { max: 500, label: 'Description' });
+    let baseCalsPer100g = V.num(body.baseCalsPer100g, { min: 0, max: 2000, label: 'Calories' });
+    let proteinPer100g = V.num(body.proteinPer100g, { min: 0, max: 100, label: 'Protein' });
+    const weightGram = V.num(body.weightGram, { min: 1, max: 10000, label: 'Weight' });
+    const servingGrams = V.num(body.servingGrams, { min: 1, max: 10000, label: 'Serving size' });
 
-    const finalName = name.trim();
+    const finalName = name;
     const finalDesc = description || notes || '';
-    const finalWeight = parseFloat(weightGram) || 250;
+    const finalWeight = weightGram || 250;
 
     // If calories or protein are not provided, auto-calculate with AI
-    if (baseCalsPer100g === undefined || baseCalsPer100g === null || isNaN(parseFloat(baseCalsPer100g))) {
+    if (baseCalsPer100g === undefined) {
       const estimate = await aiRouter.estimateDishWithAi({
         name: finalName,
         weightGram: finalWeight,
         description: finalDesc,
         lang: req.lang,
       });
-      baseCalsPer100g = estimate.baseCalsPer100g;
-      proteinPer100g = estimate.proteinPer100g;
+      baseCalsPer100g = Math.min(2000, Math.max(0, Number(estimate.baseCalsPer100g) || 0));
+      proteinPer100g = Math.min(100, Math.max(0, Number(estimate.proteinPer100g) || 0));
       if (!notes && estimate.hiddenTrapsNotes) {
         notes = estimate.hiddenTrapsNotes;
       }
@@ -48,52 +53,36 @@ router.post('/recipes', async (req, res) => {
       data: {
         userId: req.userId,
         name: finalName,
-        baseCalsPer100g: parseFloat(baseCalsPer100g),
-        proteinPer100g: parseFloat(proteinPer100g || 0),
-        servingGrams: parseFloat(servingGrams) > 0 ? parseFloat(servingGrams) : finalWeight,
-        notes: notes || finalDesc || null,
+        baseCalsPer100g,
+        proteinPer100g: proteinPer100g || 0,
+        servingGrams: servingGrams > 0 ? servingGrams : finalWeight,
+        notes: (notes || finalDesc || '').slice(0, 500) || null,
       },
     });
     res.json({ success: true, recipe });
   } catch (err) {
-    console.error('❌ Create recipe error:', err);
-    res.status(500).json({ error: 'Failed to create recipe', details: err.message });
+    sendError(res, err, '❌ Create recipe error:');
   }
 });
 
 // PUT /api/recipes/:id  (edit name, nutrition per 100g, notes)
 router.put('/recipes/:id', async (req, res) => {
   try {
-    const { name, baseCalsPer100g, proteinPer100g, notes, servingGrams } = req.body;
+    const body = req.body || {};
+    if (typeof req.params.id !== 'string') return res.status(404).json({ error: 'Recipe not found' });
     const data = {};
-    if (name !== undefined) {
-      if (!String(name).trim()) return res.status(400).json({ error: 'Dish name is required.' });
-      data.name = String(name).trim();
-    }
-    if (baseCalsPer100g !== undefined) {
-      const v = parseFloat(baseCalsPer100g);
-      if (isNaN(v) || v < 0) return res.status(400).json({ error: 'Calories must be a positive number.' });
-      data.baseCalsPer100g = v;
-    }
-    if (proteinPer100g !== undefined) {
-      const v = parseFloat(proteinPer100g);
-      if (isNaN(v) || v < 0) return res.status(400).json({ error: 'Protein must be a positive number.' });
-      data.proteinPer100g = v;
-    }
-    if (servingGrams !== undefined) {
-      const v = parseFloat(servingGrams);
-      if (isNaN(v) || v <= 0) return res.status(400).json({ error: 'Serving size must be a positive number.' });
-      data.servingGrams = v;
-    }
-    if (notes !== undefined) data.notes = String(notes).trim() || null;
+    if (body.name !== undefined) data.name = V.str(body.name, { max: 100, required: true, label: 'Dish name' });
+    if (body.baseCalsPer100g !== undefined) data.baseCalsPer100g = V.num(body.baseCalsPer100g, { min: 0, max: 2000, required: true, label: 'Calories' });
+    if (body.proteinPer100g !== undefined) data.proteinPer100g = V.num(body.proteinPer100g, { min: 0, max: 100, required: true, label: 'Protein' });
+    if (body.servingGrams !== undefined) data.servingGrams = V.num(body.servingGrams, { min: 1, max: 10000, required: true, label: 'Serving size' });
+    if (body.notes !== undefined) data.notes = V.str(body.notes, { max: 500, label: 'Notes' }) || null;
 
     const { count } = await prisma.recipe.updateMany({ where: { id: req.params.id, userId: req.userId }, data });
     if (!count) return res.status(404).json({ error: 'Recipe not found' });
     const recipe = await prisma.recipe.findUnique({ where: { id: req.params.id } });
     res.json({ success: true, recipe });
   } catch (err) {
-    console.error('❌ Update recipe error:', err);
-    res.status(500).json({ error: 'Failed to update recipe', details: err.message });
+    sendError(res, err, '❌ Update recipe error:');
   }
 });
 
@@ -103,8 +92,7 @@ router.delete('/recipes/:id', async (req, res) => {
     await prisma.recipe.deleteMany({ where: { id: req.params.id, userId: req.userId } });
     res.json({ success: true });
   } catch (err) {
-    console.error('❌ Delete recipe error:', err);
-    res.status(500).json({ error: 'Failed to delete recipe', details: err.message });
+    sendError(res, err, '❌ Delete recipe error:');
   }
 });
 

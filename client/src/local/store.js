@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences';
+import { sanitizeRestoredConfig } from './configSanitize';
 
 // On-phone database for local mode. Each collection is one JSON value in Capacitor Preferences
 // (Android SharedPreferences: durable app storage that is not cleared like browser storage).
@@ -58,9 +59,74 @@ export function snapshot() {
   return { app: 'health-animal', version: 1, exportedAt: new Date().toISOString(), data: { ...data } };
 }
 
+const MAX_ROWS = 50000;
+const ARRAYS = ['recipes', 'logs', 'workouts', 'checkins'];
+const OBJECTS = ['config', 'avatar'];
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+export class BackupError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'BackupError';
+    this.code = code;
+  }
+}
+
+// Deep copy of parsed JSON without the keys that could poison prototypes. Depth-limited.
+function clean(v, depth = 0) {
+  if (depth > 12) return null;
+  if (Array.isArray(v)) return v.map((x) => clean(x, depth + 1));
+  if (isPlain(v)) {
+    const out = {};
+    for (const k of Object.keys(v)) if (!UNSAFE_KEYS.has(k)) out[k] = clean(v[k], depth + 1);
+    return out;
+  }
+  return v;
+}
+
+// Validates a whole backup before anything is written; returns { name: value } for every collection.
+function validate(backup) {
+  const notBackup = () => new BackupError('not-a-backup', "This file isn't a Health Animal backup");
+  if (!isPlain(backup) || backup.app !== 'health-animal' || !isPlain(backup.data)) throw notBackup();
+  const src = backup.data;
+  // A backup with neither settings nor history would wipe the phone for nothing.
+  if (!isPlain(src.config) && !Array.isArray(src.logs)) throw notBackup();
+  const out = {};
+  for (const name of COLLECTIONS) {
+    const raw = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : null;
+    if (raw == null) {
+      out[name] = null;
+    } else if (OBJECTS.includes(name)) {
+      out[name] = isPlain(raw) ? (name === 'config' ? sanitizeRestoredConfig(clean(raw)) : clean(raw)) : null;
+    } else {
+      if (!Array.isArray(raw)) {
+        out[name] = null;
+      } else {
+        if (raw.length > MAX_ROWS) throw new BackupError('too-large', 'Backup file is too large');
+        out[name] = raw.filter((r) => isPlain(r) && typeof r.id === 'string' && r.id).map((r) => clean(r));
+      }
+    }
+  }
+  return out;
+}
+
 export async function restore(backup) {
-  if (!backup || backup.app !== 'health-animal' || !backup.data) throw new Error('not-a-backup');
-  for (const name of COLLECTIONS) await write(name, backup.data[name] ?? null);
+  const next = validate(backup);
+  const prev = {};
+  for (const name of COLLECTIONS) prev[name] = data[name] ?? null;
+  const done = [];
+  try {
+    for (const name of COLLECTIONS) {
+      await write(name, next[name]);
+      done.push(name);
+    }
+  } catch (err) {
+    for (const name of done.concat(COLLECTIONS.filter((n) => !done.includes(n)))) {
+      try { await write(name, prev[name]); } catch {}
+    }
+    throw new BackupError('write-failed', 'Backup is damaged: nothing was changed');
+  }
 }
 
 export const newId = () =>

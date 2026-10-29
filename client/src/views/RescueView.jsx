@@ -339,7 +339,7 @@ export default function RescueView() {
                   <span className="text-base">✨</span>
                   <h3 className="font-pixel text-xs text-amber-200">{editingId ? t('EDIT RECIPE') : t('AI CRAFT RECIPE')}</h3>
                 </div>
-                <button onClick={closeDrawer} className="p-1 rounded-lg text-amber-300/60 hover:text-amber-200">
+                <button onClick={closeDrawer} aria-label={t('Close')} className="p-1 rounded-lg text-amber-300/60 hover:text-amber-200">
                   <X className="w-4 h-4" />
                 </button>
               </div>

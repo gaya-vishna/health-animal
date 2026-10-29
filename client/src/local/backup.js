@@ -1,7 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { snapshot, restore } from './store';
+import { snapshot, restore, BackupError } from './store';
+
+const MAX_BYTES = 10 * 1024 * 1024;
 
 // The history lives only on the phone, so backups are a file the person sends somewhere safe
 // (Drive, WhatsApp to themselves, email) and can restore from on a new phone.
@@ -14,13 +16,23 @@ export async function exportBackup() {
     await Share.share({ title: name, url: file.uri, dialogTitle: name });
   } else {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.href = url;
     a.download = name;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 }
 
 export async function importBackup(file) {
+  if (file.size > MAX_BYTES) throw new BackupError('too-large', 'Backup file is too large');
   const text = await file.text();
-  await restore(JSON.parse(text));
+  if (text.length > MAX_BYTES) throw new BackupError('too-large', 'Backup file is too large');
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new BackupError('not-a-backup', "This file isn't a Health Animal backup");
+  }
+  await restore(parsed);
 }

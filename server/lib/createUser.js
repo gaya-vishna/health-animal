@@ -1,9 +1,10 @@
-const bcrypt = require('bcryptjs');
 const starterRecipes = require('./starterRecipes');
+const { hashPassword } = require('./password');
 
 // Creates a user plus their default preferences, avatar and starter recipes.
+// `password` is optional: without it the account has no web password (the name is the login).
 async function createUser(prisma, { email, password, name, lang }) {
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = password ? await hashPassword(password) : null;
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.create({ data: { email, passwordHash, name: name || null } });
     await tx.userConfig.create({ data: { userId: user.id, setupDone: false } });

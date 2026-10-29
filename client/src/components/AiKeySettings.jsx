@@ -5,12 +5,18 @@ import { testKey } from '../local/geminiDirect';
 import { hasAiServer } from '../local/aiRouter';
 
 // Local mode only: lets people paste their own free Gemini key so AI estimates work with no server.
-export default function AiKeySettings() {
+export default function AiKeySettings({ openSignal = 0 }) {
   const [saved, setSaved] = useState('');
   const [draft, setDraft] = useState('');
   const [msg, setMsg] = useState('');
+  const [msgBad, setMsgBad] = useState(false);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+
+  // A changing openSignal (e.g. from the first-run banner) expands the section.
+  useEffect(() => {
+    if (openSignal) setOpen(true);
+  }, [openSignal]);
 
   useEffect(() => {
     loadAiKey().then(setSaved);
@@ -31,7 +37,8 @@ export default function AiKeySettings() {
     setMsg('');
     const r = await testKey(key);
     setBusy(false);
-    setMsg(r === 'ok' ? t('Key works ✓') : r === 'invalid' ? t('Key not accepted') : t('No connection'));
+    setMsgBad(r !== 'ok');
+    setMsg(r === 'ok' ? t('Key works ✓') : r === 'invalid' ? t('Key not accepted') : r === 'quota' ? t('Key works, but the free quota is used up for now') : t('No connection'));
   };
 
   const remove = async () => {
@@ -44,7 +51,7 @@ export default function AiKeySettings() {
   const using = saved ? t('Using: your key') : hasAiServer() ? t('Using: your server') : t('Using: offline estimates');
 
   return (
-    <div className="pixel-box-wood p-4 rounded-2xl space-y-3">
+    <div id="ai-key-settings" className="pixel-box-wood p-4 rounded-2xl space-y-3 scroll-mt-4">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -56,10 +63,10 @@ export default function AiKeySettings() {
         </span>
         <span className="text-amber-300 text-xs shrink-0" aria-hidden="true">{open ? '▲' : '▼'}</span>
       </button>
-      <p className="text-[10px] font-pixel text-amber-200/70">{t('Optional, the app works fine without it.')}</p>
+      <p className="text-[11px] font-pixel text-amber-200/70">{t('Optional, the app works fine without it.')}</p>
       {open && (
         <>
-      <p className="text-[10px] font-pixel text-amber-200/70">
+      <p className="text-[11px] font-pixel text-amber-200/70">
         {t('Paste your own free Gemini API key. It stays only on this phone; food text and photos go directly to Google.')}
       </p>
       <a
@@ -98,8 +105,8 @@ export default function AiKeySettings() {
           </button>
         )}
       </div>
-      {msg && <p className="text-[10px] font-pixel text-emerald-300">{msg}</p>}
-      <p className="text-[9px] font-pixel text-amber-300/50">{using}</p>
+      {msg && <p role="status" className={`text-[11px] font-pixel ${msgBad ? 'text-rose-300' : 'text-emerald-300'}`}>{msg}</p>}
+      <p className="text-[11px] font-pixel text-amber-300/70">{using}</p>
         </>
       )}
     </div>

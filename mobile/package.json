@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "description": "Android shell for Health Animal (bundles the web app, keeps data on the phone, adds native reminders)",
   "scripts": {
-    "sync": "cap sync android",
-    "apk": "cap sync android && cd android && gradlew.bat assembleDebug"
+    "nsc": "node tools/gen-nsc.mjs",
+    "sync": "node tools/gen-nsc.mjs && cap sync android",
+    "apk": "node tools/gen-nsc.mjs && cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

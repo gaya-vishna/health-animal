@@ -107,24 +107,29 @@ export default function HistoryView() {
         {/* Summary strip */}
         <div className="grid grid-cols-3 gap-2">
           <div className="pixel-box-wood rounded-xl p-2.5 text-center">
-            <div className="text-[9px] font-pixel text-cyan-300/80">{t('AVG WATER')}</div>
+            <div className="text-[11px] font-pixel text-cyan-300/80">{t('AVG WATER')}</div>
             <div className="text-sm font-pixel text-cyan-200 mt-1 whitespace-nowrap">{t('{n} L', { n: litres(summary.avgWaterMl) })}</div>
           </div>
           <div className="pixel-box-wood rounded-xl p-2.5 text-center">
-            <div className="text-[9px] font-pixel text-purple-300/80 whitespace-nowrap">{t('WORKOUTS')}</div>
+            <div className="text-[11px] font-pixel text-purple-300/80 whitespace-nowrap">{t('WORKOUTS')}</div>
             <div className="text-sm font-pixel text-purple-200 mt-1 whitespace-nowrap">{t('{n} days', { n: summary.workoutDays })}</div>
-            <div className="text-[9px] font-pixel text-amber-200/50">{t('{n} min', { n: summary.workoutMinutes })}</div>
+            <div className="text-[11px] font-pixel text-amber-200/70">{t('{n} min', { n: summary.workoutMinutes })}</div>
           </div>
           <div className="pixel-box-wood rounded-xl p-2.5 text-center">
-            <div className="text-[9px] font-pixel text-orange-300/80">{t('AVG FUEL')}</div>
+            <div className="text-[11px] font-pixel text-orange-300/80">{t('AVG FUEL')}</div>
             <div className="text-sm font-pixel text-orange-200 mt-1">{summary.avgCalories}</div>
-            <div className="text-[9px] font-pixel text-amber-200/50">{t('KCAL')}</div>
+            <div className="text-[11px] font-pixel text-amber-200/70">{t('KCAL')}</div>
           </div>
         </div>
 
         {/* Day cards */}
+        {days.every((d) => !d.calories && !d.waterMl && !d.workouts.length && !d.weighIn) && (
+          <div className="pixel-box-wood rounded-2xl p-4 text-center text-[11px] font-pixel text-amber-200/80">
+            {t('Nothing logged yet: your history starts with your first meal')}
+          </div>
+        )}
         <div className="space-y-2 pb-2">
-          {days.map((d, i) => {
+          {days.filter((d, _i, all) => !all.every((x) => !x.calories && !x.waterMl && !x.workouts.length && !x.weighIn)).map((d, i) => {
             const empty = !d.calories && !d.waterMl && !d.workouts.length && !d.weighIn;
             const minutes = d.workouts.reduce((s, w) => s + w.durationMin, 0);
             const isOpen = !!open[i];
@@ -163,7 +168,7 @@ export default function HistoryView() {
                       <div className="px-3.5 pb-3 space-y-3">
                         {d.meals.length > 0 && (
                           <div>
-                            <div className="text-[9px] font-pixel text-orange-300/70 mb-0.5">{t('MEALS')}</div>
+                            <div className="text-[11px] font-pixel text-orange-300/70 mb-0.5">{t('MEALS')}</div>
                             {d.meals.map((m) => (
                               <EntryRow
                                 key={m.id}
@@ -178,7 +183,7 @@ export default function HistoryView() {
                         )}
                         {d.water.length > 0 && (
                           <div>
-                            <div className="text-[9px] font-pixel text-cyan-300/70 mb-0.5">{t('WATER')}</div>
+                            <div className="text-[11px] font-pixel text-cyan-300/70 mb-0.5">{t('WATER')}</div>
                             {d.water.map((w) => (
                               <EntryRow key={w.id} time={w.time} right={`+${w.ml}${t('ml')}`} onDelete={() => remove('log', w.id)}>
                                 💧
@@ -188,7 +193,7 @@ export default function HistoryView() {
                         )}
                         {d.workouts.length > 0 && (
                           <div>
-                            <div className="text-[9px] font-pixel text-purple-300/70 mb-0.5">{t('WORKOUTS')}</div>
+                            <div className="text-[11px] font-pixel text-purple-300/70 mb-0.5">{t('WORKOUTS')}</div>
                             {d.workouts.map((w) => (
                               <EntryRow
                                 key={w.id}

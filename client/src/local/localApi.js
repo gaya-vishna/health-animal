@@ -1,6 +1,7 @@
 // Local mode: answers the same /api/... requests the screens make, from the on-phone store instead of
 // the server. Mirrors server/routes/{logs,history,recipes,settings}.js so the screens need no changes.
 import { read, write, newId, isFailed, setMemory } from './store';
+import { DEFAULT_CONFIG, applyConfigInput } from './configSanitize';
 import { offlineEstimate } from './offlineEstimate';
 import { askAi } from './aiRouter';
 import { starterRecipes } from './starterRecipes';
@@ -8,20 +9,6 @@ import { getLang } from '../utils/i18n';
 import { goalDirectionOf, isOverComfort, proteinAutoTargetG } from '../utils/goal';
 
 const WATER_GOAL_ML = 2500;
-const DEFAULT_CONFIG = {
-  heightCm: 165,
-  startWeightKg: 70,
-  targetWeightKg: 60,
-  sex: null,
-  birthYear: null,
-  slothName: null,
-  dailyCaloricTargetMin: 1450,
-  dailyCaloricTargetMax: 1550,
-  mealTimesJson: ['09:30', '13:30', '18:00', '21:00'],
-  bedtimeReminderTime: '23:00',
-  notificationSoundsJson: { meal: 'bell', bedtime: 'winddown', workout: 'tick', checkin: 'harp' },
-};
-
 const AVATAR_DEFAULTS = {
   totalDays: 0, lastLogDay: null, xp: 0, level: 1,
   logXpDay: null, logXpToday: 0, tapXpDay: null, tapXpToday: 0, comebackDay: null, proteinXpDay: null,
@@ -433,45 +420,7 @@ async function updateRecipe(id, b) {
 
 // ---------------------------------------------------------------- settings
 async function saveSettings(b) {
-  const c = { ...read('config') };
-  // Only accept usable values; anything else keeps the existing setting.
-  const num = (k, parse = parseFloat) => {
-    if (b[k] === undefined) return;
-    const v = parse(b[k]);
-    if (Number.isFinite(v) && v > 0) c[k] = v;
-  };
-  const hhmm = (v) => typeof v === 'string' && /^\d{2}:\d{2}$/.test(v);
-  num('heightCm'); num('startWeightKg'); num('targetWeightKg');
-  num('dailyCaloricTargetMin', (v) => parseInt(v, 10)); num('dailyCaloricTargetMax', (v) => parseInt(v, 10));
-  // sex / birthYear: null or '' clears, a valid value sets, anything else is ignored.
-  if (b.sex === null || b.sex === '') c.sex = null;
-  else if (b.sex === 'female' || b.sex === 'male') c.sex = b.sex;
-  if (b.birthYear === null || b.birthYear === '') c.birthYear = null;
-  else if (b.birthYear !== undefined) {
-    const y = Number(b.birthYear);
-    if (Number.isInteger(y) && y >= 1900 && y <= new Date().getFullYear() - 10) c.birthYear = y;
-  }
-  // proteinTargetG: null or '' clears it; an integer 1-400 sets it; anything else is ignored.
-  if (b.proteinTargetG === null || b.proteinTargetG === '') c.proteinTargetG = null;
-  else if (b.proteinTargetG !== undefined) {
-    const p = Number(b.proteinTargetG);
-    if (Number.isInteger(p) && p >= 1 && p <= 400) c.proteinTargetG = p;
-  }
-  // slothName: null, '' or blank clears it; a trimmed 1-20 character string sets it; anything else is ignored.
-  if (b.slothName === null || b.slothName === '') c.slothName = null;
-  else if (typeof b.slothName === 'string') {
-    const n = b.slothName.trim();
-    if (!n) c.slothName = null;
-    else if ([...n].length <= 20) c.slothName = n;
-  }
-  if (b.targetDate !== undefined) {
-    const d = new Date(b.targetDate);
-    if (!isNaN(d.getTime())) c.targetDate = d.toISOString();
-  }
-  if (Array.isArray(b.mealTimesJson) && b.mealTimesJson.every(hhmm)) c.mealTimesJson = b.mealTimesJson;
-  if (hhmm(b.bedtimeReminderTime)) c.bedtimeReminderTime = b.bedtimeReminderTime;
-  if (b.notificationSoundsJson !== undefined) c.notificationSoundsJson = b.notificationSoundsJson;
-  if (typeof b.setupDone === 'boolean') c.setupDone = b.setupDone;
+  const c = applyConfigInput({ ...read('config') }, b);
   c.updatedAt = new Date().toISOString();
   await write('config', c);
   return ok({ success: true, config: c });

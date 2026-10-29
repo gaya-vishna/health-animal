@@ -1,5 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const V = require('../lib/validate');
+const { sendError } = V;
 
 const { goalDirectionOf, isOverComfort, proteinAutoTargetG } = require('../lib/goal');
 
@@ -210,8 +212,7 @@ router.get('/dashboard', async (req, res) => {
       logCount: todayLogs.length,
     });
   } catch (err) {
-    console.error('❌ Dashboard error:', err);
-    res.status(500).json({ error: 'Failed to load dashboard', details: err.message });
+    sendError(res, err, '❌ Dashboard error:');
   }
 });
 
@@ -235,34 +236,47 @@ router.post('/log/meal', async (req, res) => {
       createdAt: createdAtBody,
     } = req.body;
 
-    const weightGram = weightGramBody ?? weightGrams;
+    const v = {
+      mealType: V.str(mealType, { max: 30, label: 'Meal type' }),
+      inputMode: V.str(inputMode, { max: 20, label: 'Input mode' }),
+      calories: V.num(calories, { min: 0, max: 20000, label: 'Calories' }),
+      text: V.str(rawText, { max: 500, label: 'Text' }) || V.str(name, { max: 500, label: 'Name' }),
+      weightGram: V.num(weightGramBody ?? weightGrams, { min: 0, max: 50000, label: 'Weight' }),
+      min: V.num(aiEstimatedCalsMin, { min: 0, max: 20000, label: 'Calories' }),
+      max: V.num(aiEstimatedCalsMax, { min: 0, max: 20000, label: 'Calories' }),
+      proteinG: V.num(proteinGBody, { min: 0, max: 1000, label: 'Protein' }),
+    };
+    if (aiBreakdown !== undefined && aiBreakdown !== null && (typeof aiBreakdown !== 'object' || JSON.stringify(aiBreakdown).length > 20000)) {
+      throw new V.ValidationError('Breakdown is too large.');
+    }
+    // recipeId must be a string that belongs to this user; a stale or foreign id is simply dropped.
+    const recipe = typeof recipeId === 'string' && recipeId
+      ? await prisma.recipe.findFirst({ where: { id: recipeId, userId: req.userId } })
+      : null;
+    const weightGram = v.weightGram;
     let calculatedCals = null;
-    if (inputMode === 'recipe' && recipeId && weightGram) {
-      const recipe = await prisma.recipe.findFirst({ where: { id: recipeId, userId: req.userId } });
-      if (recipe) {
-        calculatedCals = (weightGram / 100) * recipe.baseCalsPer100g;
-      }
+    if (v.inputMode === 'recipe' && recipe && weightGram) {
+      calculatedCals = (weightGram / 100) * recipe.baseCalsPer100g;
     }
 
-    const effectiveMode = inputMode || (recipeId ? 'recipe' : 'vision');
-    let estMin = aiEstimatedCalsMin;
-    let estMax = aiEstimatedCalsMax;
-    if (calories && estMin === undefined && estMax === undefined) {
-      estMin = Math.round(calories);
-      estMax = Math.round(calories);
+    const effectiveMode = v.inputMode || (recipe ? 'recipe' : 'vision');
+    let estMin = v.min;
+    let estMax = v.max;
+    if (v.calories && estMin === undefined && estMax === undefined) {
+      estMin = Math.round(v.calories);
+      estMax = Math.round(v.calories);
     }
 
-    const pg = Number(proteinGBody);
-    const proteinG = proteinGBody !== undefined && proteinGBody !== null && proteinGBody !== '' && Number.isFinite(pg) && pg >= 0 ? pg : null;
+    const proteinG = v.proteinG ?? null;
 
     const log = await prisma.dailyLog.create({
       data: {
         userId: req.userId,
-        mealType: mealType || 'snack',
+        mealType: v.mealType || 'snack',
         inputMode: effectiveMode,
-        recipeId: recipeId || null,
-        weightGram: weightGram ? parseFloat(weightGram) : null,
-        rawText: rawText || name || null,
+        recipeId: recipe ? recipe.id : null,
+        weightGram: weightGram || null,
+        rawText: v.text || null,
         aiEstimatedCalsMin: estMin || null,
         aiEstimatedCalsMax: estMax || null,
         aiBreakdown: aiBreakdown ? JSON.stringify(aiBreakdown) : null,
@@ -296,18 +310,17 @@ router.post('/log/meal', async (req, res) => {
     res.json({
       success: true,
       log,
-      calculatedCals: calculatedCals ? Math.round(calculatedCals) : (calories ? Math.round(calories) : null),
+      calculatedCals: calculatedCals ? Math.round(calculatedCals) : (v.calories ? Math.round(v.calories) : null),
     });
   } catch (err) {
-    console.error('❌ Log meal error:', err);
-    res.status(500).json({ error: 'Failed to log meal', details: err.message });
+    sendError(res, err, '❌ Log meal error:');
   }
 });
 
 // POST /api/log/water  (+250ml default)
 router.post('/log/water', async (req, res) => {
   try {
-    const { ml = 250 } = req.body;
+    const ml = V.num(req.body.ml, { min: 1, max: 5000, int: true, label: 'Amount' }) ?? 250;
     const log = await prisma.dailyLog.create({
       data: {
         userId: req.userId,
@@ -320,22 +333,22 @@ router.post('/log/water', async (req, res) => {
     await recordLogProgress(req.userId, 'water');
     res.json({ success: true, added: ml, log });
   } catch (err) {
-    console.error('❌ Log water error:', err);
-    res.status(500).json({ error: 'Failed to log water', details: err.message });
+    sendError(res, err, '❌ Log water error:');
   }
 });
 
 // POST /api/log/workout
 router.post('/log/workout', async (req, res) => {
   try {
-    const { type, durationMin, notes } = req.body;
+    const type = V.str(req.body.type, { max: 50, label: 'Type' });
+    const durationMin = V.num(req.body.durationMin, { min: 1, max: 600, int: true, label: 'Duration' });
+    const notes = V.str(req.body.notes, { max: 500, label: 'Notes' });
     const log = await prisma.workoutLog.create({
       data: { userId: req.userId, type: type || 'cardio', durationMin: durationMin || 30, notes: notes || null },
     });
     res.json({ success: true, log });
   } catch (err) {
-    console.error('❌ Log workout error:', err);
-    res.status(500).json({ error: 'Failed to log workout', details: err.message });
+    sendError(res, err, '❌ Log workout error:');
   }
 });
 
@@ -350,8 +363,7 @@ router.get('/logs/today', async (req, res) => {
     });
     res.json({ logs });
   } catch (err) {
-    console.error('❌ Logs today error:', err);
-    res.status(500).json({ error: 'Failed to fetch logs', details: err.message });
+    sendError(res, err, '❌ Logs today error:');
   }
 });
 
@@ -405,8 +417,7 @@ router.get('/checkin/status', async (req, res) => {
       latestCheckin,
     });
   } catch (err) {
-    console.error('❌ Checkin status error:', err);
-    res.status(500).json({ error: 'Failed to get checkin status', details: err.message });
+    sendError(res, err, '❌ Checkin status error:');
   }
 });
 
@@ -414,12 +425,7 @@ router.get('/checkin/status', async (req, res) => {
 // Logs weekly weigh-in and updates user config
 router.post('/checkin/weight', async (req, res) => {
   try {
-    const { weightKg } = req.body;
-    if (!weightKg || isNaN(parseFloat(weightKg))) {
-      return res.status(400).json({ error: 'Valid weightKg is required' });
-    }
-
-    const weight = parseFloat(weightKg);
+    const weight = V.num(req.body.weightKg, { min: 20, max: 500, required: true, label: 'Weight' });
     const config = await prisma.userConfig.findUnique({ where: { userId: req.userId } });
 
     // Create weekly checkin record
@@ -442,8 +448,7 @@ router.post('/checkin/weight', async (req, res) => {
       goalWeight: config?.targetWeightKg,
     });
   } catch (err) {
-    console.error('❌ Log checkin weight error:', err);
-    res.status(500).json({ error: 'Failed to record checkin weight', details: err.message });
+    sendError(res, err, '❌ Log checkin weight error:');
   }
 });
 
@@ -451,7 +456,7 @@ router.post('/checkin/weight', async (req, res) => {
 router.post('/avatar/tap', async (req, res) => {
   try {
     const kind = req.body && req.body.kind;
-    if (!TAP_XP[kind]) return res.status(400).json({ error: 'Unknown tap kind' });
+    if (typeof kind !== 'string' || !Object.prototype.hasOwnProperty.call(TAP_XP, kind)) return res.status(400).json({ error: 'Unknown tap kind' });
     const av = await getAvatar(req.userId);
     const today = dayKey();
     const used = av.tapXpDay === today ? av.tapXpToday : 0;
@@ -464,8 +469,7 @@ router.post('/avatar/tap', async (req, res) => {
     });
     res.json({ xp, level, gained });
   } catch (err) {
-    console.error('Avatar tap error:', err);
-    res.status(500).json({ error: 'Failed to record tap', details: err.message });
+    sendError(res, err, 'Avatar tap error:');
   }
 });
 

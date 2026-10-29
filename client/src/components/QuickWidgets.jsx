@@ -115,7 +115,7 @@ function WorkoutWidget({ onLog }) {
                 <h3 className="font-pixel text-xs text-amber-300 flex items-center gap-2">
                   <span>⚔️</span> {t('LOG ACTIVITY')}
                 </h3>
-                <button onClick={() => setOpen(false)} className="text-xs text-amber-300/60 font-pixel">✕</button>
+                <button onClick={() => setOpen(false)} aria-label={t('Close')} className="text-xs text-amber-300/70 font-pixel">✕</button>
               </div>
 
               <div className="space-y-3">

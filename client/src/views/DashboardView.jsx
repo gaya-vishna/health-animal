@@ -255,6 +255,10 @@ export default function DashboardView() {
           <span className="text-lg">🍽️</span> {t('FEED ME — LOG A MEAL')}
         </motion.button>
 
+        {!dashboard.totalCals && !dashboard.lastMealAt && !(dashboard.loggedMealTypes?.length) && (
+          <p className="text-center text-[11px] font-pixel text-amber-200/80">{t('Feed me your first meal!')}</p>
+        )}
+
         {/* Bottom Circular Food Inventory Shelf */}
         <FoodInventoryDock
           onQuickFeed={handleQuickFeed}

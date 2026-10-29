@@ -145,6 +145,7 @@ export default function WeighInModal({
               </div>
               <button
                 onClick={onClose}
+                aria-label={t('Close')}
                 className="p-1 rounded-lg text-amber-300/60 hover:text-amber-200"
               >
                 <X className="w-4 h-4" />

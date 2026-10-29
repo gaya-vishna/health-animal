@@ -3,7 +3,7 @@ const createUser = require('../lib/createUser');
 
 const prisma = new PrismaClient();
 
-const DEMO = { email: 'demo@healthanimal.app', password: 'demo1234', name: 'Demo' };
+const DEMO = { email: 'demo@healthanimal.app', name: 'Demo' };
 
 // Creates (or resets) a demo account with a week of health stats.
 async function main() {
@@ -49,7 +49,7 @@ async function main() {
   });
   await prisma.workoutLog.create({ data: { userId: user.id, type: 'walk', durationMin: 35 } });
 
-  console.log(`✅ Demo login: ${DEMO.email} / ${DEMO.password}`);
+  console.log(`✅ Demo login: ${DEMO.email} (no password)`);
 }
 
 main()

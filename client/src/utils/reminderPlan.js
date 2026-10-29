@@ -119,7 +119,12 @@ export function buildSchedule({
 }) {
   const list = [];
   const snacks = snacksOn(prefs, goalDirection);
-  const mealTimes = smart && Array.isArray(learned) && learned.length ? learned : times;
+  const rawTimes = smart && Array.isArray(learned) && learned.length ? learned : times;
+  // However the times were set, meal pings stay within 07:30-22:00 (and a malformed time is skipped).
+  const mealTimes = (rawTimes || []).map((t) => {
+    const min = toMin(t);
+    return Number.isFinite(min) ? toHHMM(clamp(min, 7 * 60 + 30, 22 * 60)) : null;
+  });
   for (let d = 0; d < DAYS; d++) {
     const idle = awayDays + d;
     if (idle > IDLE_STOP) break;

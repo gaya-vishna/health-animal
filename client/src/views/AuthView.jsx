@@ -5,6 +5,7 @@ import { t, getLang } from '../utils/i18n';
 export default function AuthView({ onAuthed, onToggleLang }) {
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -16,7 +17,7 @@ export default function AuthView({ onAuthed, onToggleLang }) {
       const res = await api(`/api/auth/${mode === 'login' ? 'login' : 'register'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, lang: getLang() }),
+        body: JSON.stringify({ username, ...(password ? { password } : {}), lang: getLang() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Something went wrong');
@@ -35,7 +36,7 @@ export default function AuthView({ onAuthed, onToggleLang }) {
     <div className="h-full flex items-center justify-center px-6 bg-[#0b1912] text-[#f5f6fa]">
       <form onSubmit={submit} className="w-full max-w-sm space-y-3">
         <div className="text-center mb-4">
-          <button type="button" onClick={onToggleLang} className="tap-area float-end text-[12px] font-bold text-amber-200 px-3 py-1.5 rounded-full border border-[#235037] bg-[#132c1e]" style={{ fontFamily: "'Heebo', system-ui, sans-serif" }}>
+          <button type="button" onClick={onToggleLang} aria-label={t('Switch language: עברית / EN')} className="tap-area float-end text-[12px] font-bold text-amber-200 px-3 py-1.5 rounded-full border border-[#235037] bg-[#132c1e]" style={{ fontFamily: "'Heebo', system-ui, sans-serif" }}>
             {getLang() === 'he' ? 'EN' : 'עב'}
           </button>
           <div className="text-5xl mb-2">🍃</div>
@@ -43,8 +44,13 @@ export default function AuthView({ onAuthed, onToggleLang }) {
         </div>
         <input className={input} type="text" placeholder={t('Your name')} autoComplete="username" required
           autoCapitalize="none" autoCorrect="off" spellCheck={false}
-          value={username} onChange={(e) => setUsername(e.target.value)} />
-        {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
+          dir="auto" maxLength={40} value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input className={input} type="password" aria-label={mode === 'login' ? t('Password') : t('Password (optional)')}
+          placeholder={mode === 'login' ? t('Password') : t('Password (optional)')}
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 8 : undefined} maxLength={128}
+          value={password} onChange={(e) => setPassword(e.target.value)} />
+        {mode === 'register' && <p className="text-[11px] text-amber-100/70">{t('At least 8 characters')}</p>}
+        {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
         <button disabled={busy} className="w-full py-2.5 rounded-xl pixel-btn-gold font-pixel text-xs text-[#2b170c] disabled:opacity-60">
           {busy ? '…' : mode === 'login' ? t('Sign in') : t('Create account')}
         </button>

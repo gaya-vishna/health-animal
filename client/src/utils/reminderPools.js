@@ -186,7 +186,7 @@ export const ARCS = [
       { title: "🧴 A sponsorship offer", body: "A moss company wants to sponsor {name}. He will think it over for a few days." },
       { title: "😬 Pre-race nerves", body: "{name} is nervous. He shows it by blinking more slowly than usual." },
       { title: "🏁 Race day!", body: "The race has started. {name} is in it. The crowd waits patiently, and also naps." },
-      { title: "🥇 Everyone crosses the line", body: "All finished together at sunset. Medals for all, naps for all. {name} teared up." },
+      { title: "🥇 Everyone crosses the line", body: "All finished together at sunset. Medals for all, naps for all. {name} got teary." },
     ],
   },
   {

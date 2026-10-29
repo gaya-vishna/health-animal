@@ -1,34 +1,49 @@
 #!/usr/bin/env node
-// Family password reset. Run on the server (nobody else can):
+// Set or clear a web password. Run on the server (nobody else can):
 //
-//   List accounts:        docker compose exec app node scripts/reset-password.js --list
-//   Reset (new random):   docker compose exec app node scripts/reset-password.js mom
-//   Reset (you choose):   docker compose exec app node scripts/reset-password.js mom NewPass123
+//   List accounts:     docker compose exec app node scripts/reset-password.js --list
+//   Set a password:    docker compose exec app node scripts/reset-password.js --user mom --password NewPass123
+//   Remove password:   docker compose exec app node scripts/reset-password.js --user mom --clear
 //
-// Locally (dev): node scripts/reset-password.js mom
+// Locally (dev): node scripts/reset-password.js --user mom --password NewPass123
+// Passwords are 8-128 characters. An account with no password signs in with just its name
+// (unless the server runs with REQUIRE_PASSWORD=true, which then locks it out until you set one).
 require('dotenv').config();
-const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const { hashPassword } = require('../lib/password');
 
 const prisma = new PrismaClient();
-const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // no look-alike characters
 
-const randomPassword = () =>
-  Array.from({ length: 8 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join('');
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--list' || a === '--clear') out[a.slice(2)] = true;
+    else if (a === '--user' || a === '--password') out[a.slice(2)] = argv[++i];
+    else out.bad = a;
+  }
+  return out;
+}
+
+const usage = () => {
+  console.error('Usage:\n  node scripts/reset-password.js --list\n  node scripts/reset-password.js --user <name> --password <8-128 characters>\n  node scripts/reset-password.js --user <name> --clear');
+  process.exitCode = 1;
+};
 
 async function main() {
-  const [arg, chosen] = process.argv.slice(2);
+  const args = parseArgs(process.argv.slice(2));
+  if (args.bad) return usage();
   const users = await prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
 
-  if (!arg || arg === '--list') {
+  if (args.list || (!args.user && !args.password && !args.clear)) {
     console.log(users.length ? 'Accounts:' : 'No accounts yet.');
     users.forEach((u) => console.log(`  ${u.email}   (created ${u.createdAt.toISOString().slice(0, 10)})`));
-    if (!arg) console.log('\nTo reset one:  node scripts/reset-password.js <username> [new-password]');
+    if (!args.list) usage();
     return;
   }
 
-  const username = arg.trim().toLowerCase();
+  if (typeof args.user !== 'string' || !args.user.trim() || (!!args.clear === !!args.password)) return usage();
+  const username = args.user.trim().toLowerCase();
   const user = users.find((u) => u.email === username);
   if (!user) {
     console.error(`No account named "${username}".`);
@@ -37,16 +52,19 @@ async function main() {
     return;
   }
 
-  const password = chosen || randomPassword();
-  if (password.length < 6) {
-    console.error('The password must be at least 6 characters.');
-    process.exitCode = 1;
+  if (args.clear) {
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: null } });
+    console.log(`Password removed for "${user.email}". They sign in with just their name.`);
     return;
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
-  console.log(`Password for "${user.email}" is now: ${password}`);
-  console.log('They can sign in with it right away (existing sessions stay signed in).');
+  if (typeof args.password !== 'string' || args.password.length < 8 || args.password.length > 128) {
+    console.error('The password must be 8-128 characters.');
+    process.exitCode = 1;
+    return;
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(args.password) } });
+  console.log(`Password set for "${user.email}". Existing sessions stay signed in until they expire.`);
 }
 
 main()

@@ -300,6 +300,11 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
     }
   }
 
+  const offlineReason = aiResult && aiResult.source !== 'gemini' && (aiResult.fallbackReason || aiResult.source === 'offline' || aiResult.source === 'generic_guess')
+    ? ({ no_key: t('Offline estimate (no AI key)'), bad_key: `${t('Offline estimate')} ${t('(key not accepted)')}`, network: `${t('Offline estimate')} ${t('(no connection)')}`, quota: `${t('Offline estimate')} ${t('(free quota used up)')}` }[aiResult.fallbackReason] || t('Offline estimate'))
+    : null;
+  const roughGuess = aiResult && (aiResult.confidence === 'low' || aiResult.confidence === 'none');
+
   const estimateCard = aiResult && (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -314,8 +319,10 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
         {t('{c} KCAL · {p}g PROTEIN', { c: calories, p: protein })}
       </div>
       {aiResult.portionNote && <div className="text-[10px] font-pixel text-emerald-200">🥄 {aiResult.portionNote}</div>}
-      {aiResult.hiddenTrapsNotes && <div className="text-[9px] font-pixel text-emerald-400/80">🍃 {aiResult.hiddenTrapsNotes}</div>}
-      <div className="text-[9px] font-pixel text-emerald-400/60">{t("Estimate only, it may be off.")}</div>
+      {offlineReason && <div className="text-[11px] font-pixel text-amber-200/80">{offlineReason}</div>}
+      {roughGuess && <div className="text-[11px] font-pixel text-amber-300">{t('Rough guess: please check')}</div>}
+      {aiResult.hiddenTrapsNotes && <div className="text-[11px] font-pixel text-emerald-400/80">🍃 {aiResult.hiddenTrapsNotes}</div>}
+      <div className="text-[11px] font-pixel text-emerald-400/70">{t("Estimate only, it may be off.")}</div>
     </motion.div>
   );
 
@@ -411,6 +418,8 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       type="text"
                       value={dishName}
                       onChange={(e) => setDishName(e.target.value)}
+                      maxLength={100}
+                      dir="auto"
                       className={field}
                       placeholder={t('e.g. cookie, cereal, salad')}
                     />
@@ -448,7 +457,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       </select>
                     </div>
                     {unit !== 'grams' && <Segmented value={size} onChange={setSize} options={SIZES.map((sz) => ({ value: sz, label: t(sz) }))} />}
-                    <p className="text-[9px] font-pixel text-amber-300/75">{t('No idea of the weight? The AI knows typical sizes.')}</p>
+                    <p className="text-[11px] font-pixel text-amber-300/80">{t('No idea of the weight? The AI knows typical sizes.')}</p>
                   </div>
 
                   <button type="button" onClick={() => setShowDetails((v) => !v)} className="tap-area text-[10px] font-pixel text-emerald-400 underline cursor-pointer">
@@ -460,6 +469,8 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       <textarea
                         value={dishDesc}
                         onChange={(e) => setDishDesc(e.target.value)}
+                        maxLength={500}
+                        dir="auto"
                         className={`${field} resize-none h-16`}
                         placeholder={t('e.g. Grilled chicken breast, sweet teriyaki glaze, white rice, sesame seeds')}
                       />
@@ -522,6 +533,8 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                           type="text"
                           value={photoNote}
                           onChange={(e) => setPhotoNote(e.target.value)}
+                          maxLength={500}
+                          dir="auto"
                           className={field}
                           placeholder={t('e.g. cooked in oil, with sugar')}
                         />
@@ -561,7 +574,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                       ) : (
                         <>
                           <Segmented value={servings} onChange={setServings} options={SERVING_CHIPS.map((n) => ({ value: n, label: String(n) }))} />
-                          <p className="text-[9px] font-pixel text-amber-300/75">{t('1 serving ≈ {g}g', { g: Math.round(servingG) })}</p>
+                          <p className="text-[11px] font-pixel text-amber-300/80">{t('1 serving ≈ {g}g', { g: Math.round(servingG) })}</p>
                         </>
                       )}
                       <button type="button" onClick={() => setUseGrams((v) => !v)} className="tap-area text-[10px] font-pixel text-emerald-400 underline cursor-pointer">
@@ -578,7 +591,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
                     >
                       <div>
                         <div className="text-xl font-pixel text-emerald-300">{t('{c} KCAL', { c: savedCals })}</div>
-                        <div className="text-[9px] font-pixel text-emerald-400/60 mt-0.5">
+                        <div className="text-[11px] font-pixel text-emerald-400/70 mt-0.5">
                           ({savedGrams}{t('g')} × {t('{n} kcal/100g', { n: recipe.baseCalsPer100g })})
                         </div>
                       </div>

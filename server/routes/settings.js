@@ -1,5 +1,9 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const V = require('../lib/validate');
+const { sendError } = V;
+
+const SOUND_KEYS = ['meal', 'bedtime', 'workout', 'checkin'];
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -19,30 +23,43 @@ router.get('/settings', async (req, res) => {
       notificationSoundsJson: JSON.parse(config.notificationSoundsJson),
     });
   } catch (err) {
-    console.error('❌ Get settings error:', err);
-    res.status(500).json({ error: 'Failed to fetch settings', details: err.message });
+    sendError(res, err, '❌ Get settings error:');
   }
 });
 
 // POST /api/settings  (full or partial update)
 router.post('/settings', async (req, res) => {
   try {
+    const b = req.body || {};
     const {
-      heightCm,
-      startWeightKg,
-      targetWeightKg,
-      targetDate,
-      dailyCaloricTargetMin,
-      dailyCaloricTargetMax,
-      mealTimesJson,
-      bedtimeReminderTime,
-      notificationSoundsJson,
       sex,
       birthYear,
       slothName,
       setupDone,
       proteinTargetG,
-    } = req.body;
+    } = b;
+
+    // Numbers: a value outside its range (or not a number) is rejected with a 400.
+    const heightCm = V.num(b.heightCm, { min: 50, max: 260, label: 'Height' });
+    const startWeightKg = V.num(b.startWeightKg, { min: 20, max: 500, label: 'Start weight' });
+    const targetWeightKg = V.num(b.targetWeightKg, { min: 20, max: 500, label: 'Target weight' });
+    const dailyCaloricTargetMin = V.num(b.dailyCaloricTargetMin, { min: 1, max: 10000, int: true, label: 'Calorie target' });
+    const dailyCaloricTargetMax = V.num(b.dailyCaloricTargetMax, { min: 1, max: 10000, int: true, label: 'Calorie target' });
+    const targetDate = V.date(b.targetDate, { label: 'Target date' });
+    const bedtimeReminderTime = V.hhmm(b.bedtimeReminderTime, { label: 'Bedtime' });
+    let mealTimesJson = V.arr(b.mealTimesJson, { max: 6, label: 'Meal times' });
+    if (mealTimesJson) mealTimesJson = mealTimesJson.map((t) => V.hhmm(t, { required: true, label: 'Meal time' }));
+    let notificationSoundsJson;
+    if (b.notificationSoundsJson !== undefined) {
+      const snd = b.notificationSoundsJson;
+      if (!snd || typeof snd !== 'object' || Array.isArray(snd)) throw new V.ValidationError('Sounds must be an object.');
+      notificationSoundsJson = {};
+      for (const k of SOUND_KEYS) {
+        if (snd[k] === undefined) continue;
+        if (typeof snd[k] !== 'string' || !/^[\w-]{1,30}$/.test(snd[k])) throw new V.ValidationError('Invalid sound choice.');
+        notificationSoundsJson[k] = snd[k];
+      }
+    }
 
     // sex / birthYear: null or '' clears, a valid value sets, anything else is ignored.
     const profile = {};
@@ -79,15 +96,15 @@ router.post('/settings', async (req, res) => {
       data: {
         ...profile,
         ...(typeof setupDone === 'boolean' && { setupDone }),
-        ...(heightCm !== undefined && { heightCm: parseFloat(heightCm) }),
-        ...(startWeightKg !== undefined && { startWeightKg: parseFloat(startWeightKg) }),
-        ...(targetWeightKg !== undefined && { targetWeightKg: parseFloat(targetWeightKg) }),
-        ...(targetDate !== undefined && { targetDate: new Date(targetDate) }),
-        ...(dailyCaloricTargetMin !== undefined && { dailyCaloricTargetMin: parseInt(dailyCaloricTargetMin) }),
-        ...(dailyCaloricTargetMax !== undefined && { dailyCaloricTargetMax: parseInt(dailyCaloricTargetMax) }),
+        ...(heightCm !== undefined && { heightCm }),
+        ...(startWeightKg !== undefined && { startWeightKg }),
+        ...(targetWeightKg !== undefined && { targetWeightKg }),
+        ...(targetDate !== undefined && { targetDate }),
+        ...(dailyCaloricTargetMin !== undefined && { dailyCaloricTargetMin }),
+        ...(dailyCaloricTargetMax !== undefined && { dailyCaloricTargetMax }),
         ...(mealTimesJson !== undefined && { mealTimesJson: JSON.stringify(mealTimesJson) }),
         ...(bedtimeReminderTime !== undefined && { bedtimeReminderTime }),
-        ...(notificationSoundsJson !== undefined && { notificationSoundsJson: JSON.stringify(notificationSoundsJson) }),
+        ...(notificationSoundsJson !== undefined && { notificationSoundsJson: JSON.stringify({ ...JSON.parse(existing.notificationSoundsJson), ...notificationSoundsJson }) }),
       },
     });
 
@@ -100,8 +117,7 @@ router.post('/settings', async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('❌ Update settings error:', err);
-    res.status(500).json({ error: 'Failed to update settings', details: err.message });
+    sendError(res, err, '❌ Update settings error:');
   }
 });
 

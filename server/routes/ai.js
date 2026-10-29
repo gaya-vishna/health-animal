@@ -1,4 +1,5 @@
 const express = require('express');
+const V = require('../lib/validate');
 const { GoogleGenAI } = require('@google/genai');
 
 const router = express.Router();
@@ -6,6 +7,16 @@ const router = express.Router();
 const aiKey = process.env.GEMINI_API_KEY;
 // Prompts and model list are shared with the phone's own-key mode (ESM, so loaded lazily).
 const P = import('../../shared/aiPrompts.mjs');
+// The phone's offline estimator is plain ESM with no imports, so the server reuses it as its fallback
+// (the Dockerfile copies that one file next to the built client). If it can't be loaded, the older
+// heuristic below is used with the same range rules.
+const clientOffline = import('../../client/src/local/offlineEstimate.js').then((m) => m.offlineEstimate).catch(() => null);
+async function offlineFallback(input) {
+  const fn = await clientOffline;
+  const r = fn ? fn(input) : heuristicNutritionalEstimate(input);
+  const min = Math.max(0, Math.round(r.estimatedCalsMin) || 0);
+  return { ...r, estimatedCalsMin: min, estimatedCalsMax: Math.max(Math.round(r.estimatedCalsMax) || 0, min + 2) };
+}
 const isRealKey = (k) => !!k && k.length > 20 && !/^your_/i.test(k);
 // Tries each model in turn; overload/quota/retired-model errors move on to the next one.
 async function generateWithRetry(request) {
@@ -164,8 +175,8 @@ function heuristicNutritionalEstimate({ name = '', weightGram = null, descriptio
   }
 
   return {
-    estimatedCalsMin: Math.max(50, Math.round(totalCalories * 0.9)),
-    estimatedCalsMax: Math.round(totalCalories * 1.1),
+    estimatedCalsMin: Math.max(0, Math.round(totalCalories * 0.9)),
+    estimatedCalsMax: Math.max(Math.round(totalCalories * 1.1), Math.max(0, Math.round(totalCalories * 0.9)) + 2),
     calories: totalCalories,
     baseCalsPer100g: Math.round(baseCals100 * 10) / 10,
     proteinG: totalProtein,
@@ -174,13 +185,15 @@ function heuristicNutritionalEstimate({ name = '', weightGram = null, descriptio
     portionNote,
     detectedItems: name ? [name] : ['Meal'],
     hiddenTrapsNotes: (traps.length > 0 ? traps : ['Rough generic guess (AI unavailable), so treat this as approximate.']).map((x) => heNote(lang, x)).join(' '),
-    source: matched ? 'keyword_estimate' : 'generic_guess',
+    source: 'offline',
+    confidence: matched ? 'medium' : 'low',
   };
 }
 
 // Core Dish Estimate function (Gemini Flash + Fallback)
 async function estimateDishWithAi({ name = '', weightGram = null, description = '', imageBase64 = null, lang = 'en', quantity = null, unit = null, size = 'regular' }) {
-  const fallback = heuristicNutritionalEstimate({ name, weightGram, description, lang, quantity, unit, size });
+  const { normalizeEstimate } = await P;
+  const fallback = normalizeEstimate({}, await offlineFallback({ name, weightGram, description, lang, quantity, unit, size }));
 
   if (!isGeminiConfigured) {
     return fallback;
@@ -216,7 +229,6 @@ async function estimateDishWithAi({ name = '', weightGram = null, description = 
     if (!text) throw new Error('Empty response from Gemini');
 
     const parsed = JSON.parse(text);
-    const { normalizeEstimate } = await P;
     return normalizeEstimate(parsed, fallback);
   } catch (err) {
     console.warn('⚠️ Gemini call failed, using heuristic estimate:', err.message);
@@ -224,52 +236,51 @@ async function estimateDishWithAi({ name = '', weightGram = null, description = 
   }
 }
 
+// Shared request cleanup for the two estimate routes. Throws ValidationError on bad input.
+const UNITS = Object.keys(UNIT_GRAMS);
+function readEstimateInput(body, { defaultWeight = null } = {}) {
+  const b = body || {};
+  const rawText = V.str(b.rawText, { max: 500, label: 'Text' }) || '';
+  const name = V.str(b.name, { max: 100, label: 'Name' }) || V.str(b.dishName, { max: 100, label: 'Name' }) || [...rawText].slice(0, 100).join('');
+  const description = V.str(b.description, { max: 500, label: 'Description' }) || V.str(b.textPrompt, { max: 500, label: 'Description' }) || rawText;
+  const weightGram = V.num(b.weightGram ?? b.weight, { min: 0, max: 50000, label: 'Weight' }) || defaultWeight;
+  let imageBase64 = b.imageBase64;
+  if (imageBase64 === undefined || imageBase64 === null || imageBase64 === '') imageBase64 = null;
+  else if (typeof imageBase64 !== 'string' || imageBase64.length > 2500000) throw new V.ValidationError('The photo is invalid or too large.');
+  return {
+    name,
+    description,
+    weightGram,
+    imageBase64,
+    quantity: V.num(b.quantity, { min: 0, max: 1000, label: 'Quantity' }) ?? null,
+    unit: V.oneOf(b.unit, UNITS, { label: 'Unit' }) ?? null,
+    size: V.oneOf(b.size, Object.keys(SIZE_MULT), { label: 'Size' }) ?? 'regular',
+  };
+}
+
 // POST /api/ai/estimate-dish
 // Estimates calories and protein automatically from name, weight, and description
 router.post('/ai/estimate-dish', async (req, res) => {
   try {
-    const { name, dishName, weightGram, weight, description, rawText, imageBase64, quantity, unit, size } = req.body;
-    const finalName = name || dishName || rawText || '';
-    const finalWeight = weightGram || weight || null; // grams only when the user really typed them
-    const finalDesc = description || rawText || '';
-
-    if (!finalName && !finalDesc && !imageBase64) {
+    const input = readEstimateInput(req.body);
+    if (!input.name && !input.description && !input.imageBase64) {
       return res.status(400).json({ error: 'Please provide a dish name, description, or image.' });
     }
 
-    const estimate = await estimateDishWithAi({
-      name: finalName,
-      weightGram: finalWeight,
-      description: finalDesc,
-      imageBase64,
-      lang: req.lang,
-      quantity,
-      unit,
-      size,
-    });
+    const estimate = await estimateDishWithAi({ ...input, lang: req.lang });
 
     res.json(estimate);
   } catch (err) {
-    console.error('❌ Estimate dish error:', err);
-    res.status(500).json({ error: 'Failed to estimate dish', details: err.message });
+    V.sendError(res, err, 'Estimate dish error');
   }
 });
 
 // POST /api/log/ai-analyze (Unified Vision / Text endpoint)
 router.post('/log/ai-analyze', async (req, res) => {
+  let input;
   try {
-    const { imageBase64, rawText, textPrompt, name, dishName, weightGram, description } = req.body;
-    const finalName = name || dishName || '';
-    const finalDesc = description || textPrompt || rawText || '';
-    const finalWeight = weightGram || 250;
-
-    const estimate = await estimateDishWithAi({
-      name: finalName,
-      weightGram: finalWeight,
-      description: finalDesc,
-      imageBase64,
-      lang: req.lang,
-    });
+    input = readEstimateInput(req.body, { defaultWeight: 250 });
+    const estimate = await estimateDishWithAi({ ...input, lang: req.lang });
 
     // Provide both formats for compatibility with existing code
     res.json({
@@ -277,8 +288,10 @@ router.post('/log/ai-analyze', async (req, res) => {
       proteinEstimateG: estimate.proteinG,
     });
   } catch (err) {
+    if (err instanceof V.ValidationError) return V.sendError(res, err, 'AI analyze error');
     console.error('❌ AI analyze error:', err);
-    const fallback = heuristicNutritionalEstimate({ name: req.body.name, weightGram: req.body.weightGram, lang: req.lang });
+    const { normalizeEstimate } = await P;
+    const fallback = normalizeEstimate({}, await offlineFallback({ name: input ? input.name : '', weightGram: input ? input.weightGram : null, lang: req.lang }));
     res.json({ ...fallback, proteinEstimateG: fallback.proteinG });
   }
 });
@@ -286,7 +299,19 @@ router.post('/log/ai-analyze', async (req, res) => {
 // POST /api/rescue/surprise
 router.post('/rescue/surprise', async (req, res) => {
   try {
-    const { remainingCals, savedRecipes, goalDirection } = req.body;
+    const { normalizeSuggestions } = await P;
+    const b = req.body || {};
+    const goalDirection = V.oneOf(b.goalDirection, ['lose', 'gain', 'maintain'], { label: 'Goal' });
+    const remainingCals = V.num(b.remainingCals, { min: -100000, max: 100000, label: 'Remaining calories' });
+    // Saved recipes are only used for their name and nutrition numbers.
+    const savedRecipes = (V.arr(b.savedRecipes, { max: 20, label: 'Recipes' }) || []).map((r) => {
+      if (!r || typeof r !== 'object') throw new V.ValidationError('Recipes are invalid.');
+      return {
+        name: V.str(r.name, { max: 100, required: true, label: 'Recipe name' }),
+        baseCalsPer100g: V.num(r.baseCalsPer100g, { min: 0, max: 2000, required: true, label: 'Calories' }),
+        proteinPer100g: V.num(r.proteinPer100g, { min: 0, max: 100, label: 'Protein' }) ?? 0,
+      };
+    });
     const gain = goalDirection === 'gain';
     const remaining = Math.max(100, remainingCals || 500);
 
@@ -304,8 +329,9 @@ router.post('/rescue/surprise', async (req, res) => {
         });
 
         const text = result.text;
-        const suggestions = JSON.parse(text);
-        return res.json({ suggestions });
+        const suggestions = normalizeSuggestions(JSON.parse(text));
+        if (suggestions.length) return res.json({ suggestions });
+        throw new Error('Unusable suggestions');
       } catch (err) {
         console.warn('Gemini surprise failed, using recipe-based fallback:', err.message);
       }
@@ -342,10 +368,9 @@ router.post('/rescue/surprise', async (req, res) => {
       });
     }
 
-    res.json({ suggestions });
+    res.json({ suggestions: normalizeSuggestions(suggestions) });
   } catch (err) {
-    console.error('❌ Rescue surprise error:', err);
-    res.status(500).json({ error: 'Failed to generate suggestions' });
+    V.sendError(res, err, 'Rescue surprise error');
   }
 });
 

@@ -6,6 +6,7 @@ import { playSound } from '../utils/audioHaptics';
 import { api } from '../utils/api';
 import { LOCAL } from '../local/mode';
 import { exportBackup, importBackup } from '../local/backup';
+import { BackupError } from '../local/store';
 import { App as NativeApp } from '@capacitor/app';
 import { isNativeApp, getReminderPrefs, setReminderPrefs, refreshReminders, sendTestReminder, snacksOn } from '../utils/reminders';
 import { t } from '../utils/i18n';
@@ -13,6 +14,69 @@ import { goalDirectionOf, proteinAutoTargetG } from '../utils/goal';
 import { setSlothName, useSlothName } from '../utils/slothName';
 import AiKeySettings from '../components/AiKeySettings';
 
+
+// Web mode only: optional password for the home-server account.
+function PasswordCard() {
+  const [hasPassword, setHasPassword] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [msg, setMsg] = useState({ text: '', bad: false });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (alive && d?.user) setHasPassword(!!(d.user.hasPassword ?? d.hasPassword));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setMsg({ text: '', bad: false });
+    if (next.length < 8) return setMsg({ text: t('At least 8 characters'), bad: true });
+    if (next !== confirm) return setMsg({ text: t("Passwords don't match"), bad: true });
+    setBusy(true);
+    try {
+      const res = await api('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(hasPassword ? { currentPassword: current } : {}), newPassword: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      setHasPassword(true);
+      setCurrent(''); setNext(''); setConfirm('');
+      setMsg({ text: t('Password saved'), bad: false });
+    } catch (err) {
+      setMsg({ text: t(err.message), bad: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = 'w-full px-3 py-2 rounded-xl bg-black/30 border-2 border-amber-900/60 text-[11px] font-pixel text-amber-100';
+  return (
+    <form onSubmit={submit} className="pixel-box-wood p-4 rounded-2xl space-y-2">
+      <h2 className="font-pixel text-xs text-amber-300 flex items-center gap-1.5">
+        <span>🔒</span> {hasPassword ? t('Change password') : t('Set password')}
+      </h2>
+      {hasPassword && (
+        <input type="password" className={field} aria-label={t('Current password')} placeholder={t('Current password')}
+          autoComplete="current-password" maxLength={128} value={current} onChange={(e) => setCurrent(e.target.value)} />
+      )}
+      <input type="password" className={field} aria-label={t('New password')} placeholder={t('New password')}
+        autoComplete="new-password" maxLength={128} value={next} onChange={(e) => setNext(e.target.value)} />
+      <input type="password" className={field} aria-label={t('Confirm password')} placeholder={t('Confirm password')}
+        autoComplete="new-password" maxLength={128} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      <button type="submit" disabled={busy || !next} className="w-full py-2.5 rounded-xl pixel-btn-wood text-[10px] font-pixel cursor-pointer disabled:opacity-50">
+        {hasPassword ? t('Change password') : t('Set password')}
+      </button>
+      {msg.text && <p role="status" className={`text-[11px] font-pixel ${msg.bad ? 'text-rose-300' : 'text-emerald-300'}`}>{msg.text}</p>}
+    </form>
+  );
+}
 
 const SOUND_OPTIONS = [
   { key: 'meal', label: 'Meal Logged', emoji: '🍽️', desc: 'Soft bell sine chime' },
@@ -114,6 +178,7 @@ export default function SettingsView() {
   const [saved, setSaved] = useState(false);
   const [autoStatus, setAutoStatus] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
+  const [aiOpenSignal, setAiOpenSignal] = useState(0); // bumps to expand the AI key section
   const [setupPending, setSetupPending] = useState(false); // first run: welcome banner + LET'S GO
   const navigate = useNavigate();
   const savedName = useSlothName();
@@ -139,7 +204,9 @@ export default function SettingsView() {
   const [troubleOpen, setTroubleOpen] = useState(false);
   const native = isNativeApp();
   const restoreRef = useRef();
-  const [dataMsg, setDataMsg] = useState('');
+  const [dataMsg, setDataMsgRaw] = useState('');
+  const [dataBad, setDataBad] = useState(false);
+  const setDataMsg = (m, bad = false) => { setDataMsgRaw(m); setDataBad(bad); };
 
   // Autosave bookkeeping lives in refs so the debounce timer and unmount flush never see stale values.
   const loadedOkRef = useRef(false);
@@ -156,7 +223,7 @@ export default function SettingsView() {
       await exportBackup();
       setDataMsg(t('Backup ready ✓'));
     } catch (err) {
-      if (!/cancel/i.test(String(err?.message))) setDataMsg(t('Something went wrong'));
+      if (!/cancel/i.test(String(err?.message))) setDataMsg(t('Something went wrong'), true);
     }
   }
 
@@ -168,8 +235,8 @@ export default function SettingsView() {
       await importBackup(file);
       setDataMsg(t('Restored ✓'));
       setTimeout(() => window.location.reload(), 800);
-    } catch {
-      setDataMsg(t('That file is not a Health Animal backup.'));
+    } catch (err) {
+      setDataMsg(err instanceof BackupError && err.message ? t(err.message) : t('That file is not a Health Animal backup.'), true);
     }
   }
 
@@ -404,6 +471,23 @@ export default function SettingsView() {
                 placeholder={t('Slomo')}
               />
             </div>
+            {LOCAL && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-pixel text-amber-200/80 leading-relaxed">
+                  {t('🤖 Want more accurate calorie estimates? Add a free Gemini key (optional). Without it, {name} uses built-in estimates.', { name: savedName })}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiOpenSignal((n) => n + 1);
+                    setTimeout(() => document.getElementById('ai-key-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                  }}
+                  className="w-full py-2.5 rounded-xl pixel-btn-wood text-[10px] font-pixel cursor-pointer"
+                >
+                  {t('Add a Gemini key')}
+                </button>
+              </div>
+            )}
             <motion.button
               type="button"
               onClick={handleFinishSetup}
@@ -525,7 +609,7 @@ export default function SettingsView() {
                 onChange={(e) => { setSex(e.target.value); markDirty(); }}
                 className="w-full bg-[#120a05] border-2 border-[#3f2413] text-amber-100 rounded-xl px-3 py-2 font-pixel text-xs focus:outline-none focus:border-amber-500"
               >
-                <option value="">{t('Prefer not to say')}</option>
+                <option value="">{t('Rather not say')}</option>
                 <option value="female">{t('Female')}</option>
                 <option value="male">{t('Male')}</option>
               </select>
@@ -647,7 +731,7 @@ export default function SettingsView() {
               className="w-full bg-[#120a05] border-2 border-[#3f2413] text-amber-100 rounded-xl px-3 py-2 font-pixel text-xs focus:outline-none focus:border-amber-500"
               placeholder={String(proteinAutoTargetG(parseFloat(latestKg || currentWeight) || 70, goalDir))}
             />
-            <p className="text-[9px] font-pixel text-amber-300/50">{t('Rough guideline, not medical advice.')}</p>
+            <p className="text-[11px] font-pixel text-amber-300/70">{t('Rough guideline, not medical advice.')}</p>
           </div>
         </div>
 
@@ -690,7 +774,7 @@ export default function SettingsView() {
                     </span>
                   </button>
                 ))}
-                <p className="text-[9px] font-pixel text-amber-300/50">{t('Meal reminders are skipped for meals you already logged.')}</p>
+                <p className="text-[11px] font-pixel text-amber-300/70">{t('Meal reminders are skipped for meals you already logged.')}</p>
               </>
             ) : (
               <p className="text-[10px] font-pixel text-amber-200/70">
@@ -719,7 +803,7 @@ export default function SettingsView() {
                   <div className="text-xs font-pixel text-amber-200">
                     {emoji} {t(label)}
                   </div>
-                  <div className="text-[10px] font-pixel text-amber-200/50 mt-0.5">{t(desc)}</div>
+                  <div className="text-[11px] font-pixel text-amber-200/70 mt-0.5">{t(desc)}</div>
                 </div>
                 <motion.button
                   id={`test-sound-${key}`}
@@ -749,12 +833,12 @@ export default function SettingsView() {
               📂 {t('RESTORE FROM FILE')}
             </button>
             <input ref={restoreRef} type="file" className="hidden" onChange={handleRestore} />
-            {dataMsg && <p className="text-[10px] font-pixel text-emerald-300">{dataMsg}</p>}
-            <p className="text-[9px] font-pixel text-amber-300/50">
+            {dataMsg && <p role="status" className={`text-[11px] font-pixel ${dataBad ? 'text-rose-300' : 'text-emerald-300'}`}>{dataMsg}</p>}
+            <p className="text-[11px] font-pixel text-amber-300/70">
               {t('Save the backup somewhere safe (Drive, or WhatsApp to yourself). If the phone is lost or reset, only a backup can bring your history back.')}
             </p>
           </div>
-          <AiKeySettings />
+          <AiKeySettings openSignal={aiOpenSignal} />
           </>
         ) : (
           <div className="pixel-box-wood p-4 rounded-2xl space-y-2">
@@ -767,6 +851,8 @@ export default function SettingsView() {
             </div>
           </div>
         )}
+
+        {!LOCAL && <PasswordCard />}
 
         {native && (
           <div className="pixel-box-wood p-4 rounded-2xl space-y-3">
@@ -815,10 +901,10 @@ export default function SettingsView() {
         </motion.button>
 
         <div className="space-y-1 px-1 pt-2 text-center">
-          <p className="text-[9px] font-pixel text-amber-300/60 leading-relaxed">
+          <p className="text-[11px] font-pixel text-amber-300/70 leading-relaxed">
             {t("Not medical or nutritional advice. For personal guidance, talk to a doctor, dietitian or nutritionist.")}
           </p>
-          <p className="text-[9px] font-pixel text-amber-300/60 leading-relaxed">
+          <p className="text-[11px] font-pixel text-amber-300/70 leading-relaxed">
             {t("If food or weight feels heavy right now, please reach out to a professional or a support line. You deserve support 🍃")}
           </p>
         </div>
