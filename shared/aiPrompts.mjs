@@ -7,7 +7,8 @@ export const SURPRISE_TEMPERATURE = 0.7;
 // Tried in order. A stable model goes first (the preview model is often overloaded and answers
 // slightly differently each time); callers fall through to the next on 429/503.
 // The server prepends env.GEMINI_MODEL.
-export const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+// Lite first: it is the model free-tier keys can reach most reliably; the others are fallbacks.
+export const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3-flash-preview'];
 
 export const NAME_MAX = 100;
 export const DESCRIPTION_MAX = 500;
@@ -62,7 +63,7 @@ RULES:
 - Work from the ingredients: estimate each stated ingredient's calories and protein and ADD THEM UP. The portion weight is only the total size of the serving; do NOT apply an average "meal" density to it.
 - A large weight of water/ice/coffee must not inflate the total.
 - Use the exact quantities and fat percentages given (e.g. "100ml 5% milk" is about 65-75 kcal).
-- Reference portions, when the user gives no weight: slice of bread 30g/80 kcal; egg 50g/72 kcal; can of cola 330ml/139 kcal; glass of juice 250ml/110 kcal; cup of cooked rice 158g/205 kcal; tablespoon of oil 119 kcal; pita 90g/250 kcal; bowl of hummus 150g; container of cottage cheese 250g/245 kcal; falafel ball 17g; sushi piece 30g; plate 350g; bowl 250g. Small = 0.75x, large = 1.35x.
+- Reference portions, when the user gives no weight: slice of bread 30g/80 kcal; egg 50g/72 kcal; can of cola 330ml/139 kcal; glass of juice 250ml/110 kcal; cup of cooked rice 158g/205 kcal; tablespoon of oil 119 kcal; pita 90g/250 kcal; bowl of hummus 150g; container of cottage cheese (קוטג׳, one container unless told otherwise) 250g/245 kcal; pita (פיתה); hummus (חומוס); falafel ball 17g; sushi piece 30g; plate 350g; bowl 250g. Small = 0.75x, large = 1.35x.
 - Consider hidden oils, sauces, cheeses, cooking fats.
 - "confidence" is "high" for a clear common food and portion, "medium" when you assumed a lot, "low" for a vague or unusual description, "none" when it is not food.${LANG_RULE(lang)}
 - Return ONLY a JSON object with this exact schema:
