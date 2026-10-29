@@ -336,7 +336,7 @@ export default function LogMealModal({ isOpen, onClose, onLogged, recipes = [] }
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-[#25150c] border-t-4 border-[#140a04] rounded-t-3xl max-h-[92vh] overflow-y-auto pixel-box-wood text-amber-100"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-[#25150c] border-t-4 border-[#140a04] rounded-t-3xl max-h-[92dvh] overflow-y-auto pixel-box-wood text-amber-100"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center pt-3 pb-1">

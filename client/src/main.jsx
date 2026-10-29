@@ -14,8 +14,10 @@ import App from './App.jsx';
 import { applyLang } from './utils/i18n';
 import { LOCAL } from './local/mode';
 import { initStore } from './local/store';
+import { initKeyboardScroll } from './utils/keyboardScroll';
 
 applyLang(); // set <html lang/dir> before first paint
+initKeyboardScroll();
 
 const start = () =>
   createRoot(document.getElementById('root')).render(

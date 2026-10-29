@@ -7,6 +7,11 @@ import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -18,6 +23,24 @@ public class MainActivity extends BridgeActivity {
         // so the pixel layout does not break, and never go below 100%.
         int fontScalePercent = Math.round(getResources().getConfiguration().fontScale * 100);
         getBridge().getWebView().getSettings().setTextZoom(Math.max(100, Math.min(150, fontScalePercent)));
+
+        // Capacitor's edge-to-edge "force" listener sets WebView margins from the system bars only and
+        // consumes the insets, so the keyboard (IME) never shrinks the WebView and covers text fields.
+        // A view has a single insets listener, so this replaces Capacitor's and adds the IME to the bottom margin.
+        View webView = getBridge().getWebView();
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
+            Insets sys = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            mlp.leftMargin = sys.left;
+            mlp.topMargin = sys.top;
+            mlp.rightMargin = sys.right;
+            mlp.bottomMargin = Math.max(sys.bottom, ime.bottom);
+            v.setLayoutParams(mlp);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(webView);
     }
 
     // Channel sound/vibration are frozen once a channel is created. To change them, bump the _v1
