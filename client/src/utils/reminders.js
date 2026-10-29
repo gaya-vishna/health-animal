@@ -3,8 +3,16 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as NativeApp } from '@capacitor/app';
 import { api } from './api';
 import { t } from './i18n';
-import { pickMessage } from './reminderMessages';
-import { setSlothName } from './slothName';
+import { setSlothName, getSlothName } from './slothName';
+import { dayIdFor, buildSchedule as planSchedule, learnMealTimes, yesterdayReaction, pick, snacksOn } from './reminderPlan.js';
+
+export { learnMealTimes, yesterdayReaction, pick, snacksOn };
+
+// Render a pool entry in the app language with the sloth's name (and e.g. the saga day number).
+const render = (entry, vars = {}) => {
+  const v = { name: getSlothName(), ...vars };
+  return { title: t(entry.title, v), body: t(entry.body, v) };
+};
 
 // Reminders are scheduled ON THE PHONE (no server push), so they arrive even when the app is closed.
 // We schedule the next DAYS days as one-off notifications and re-plan whenever the app opens, settings
@@ -12,11 +20,6 @@ import { setSlothName } from './slothName';
 
 export const isNativeApp = () => Capacitor.isNativePlatform();
 
-const DAYS = 60; // plan this far ahead; the lapse taper below keeps the real count small
-const IDLE_STOP = 60; // after this many idle days we stop reminding altogether
-const COMEBACK_TIME = '13:00';
-const SNACK_TIMES = ['11:00', '16:30'];
-const WATER_TIMES = ['11:00', '14:00', '17:00'];
 const MEALS = [
   { type: 'morning', idx: 0 },
   { type: 'lunch', idx: 1 },
@@ -33,7 +36,7 @@ KIND.comeback = KIND.test;
 const DEFAULT_MEAL_TIMES = ['09:30', '13:30', '18:00', '21:00'];
 
 const PREFS_KEY = 'ha_reminders';
-const DEFAULT_PREFS = { meals: true, bedtime: true, water: false };
+const DEFAULT_PREFS = { meals: true, bedtime: true, water: false, smartTiming: true, saga: true };
 
 export function getReminderPrefs() {
   try {
@@ -53,7 +56,7 @@ export function setReminderPrefs(prefs) {
 
 // Stable id per calendar day + slot, so "today's lunch" can be cancelled on its own.
 // slot: 0-2 meals, 3 bedtime, 4-6 water, 7-8 snacks, 9 comeback
-const idFor = (day, slot) => ((day.getMonth() + 1) * 100 + day.getDate()) * 10 + slot;
+const idFor = dayIdFor;
 
 async function ensurePermission() {
   const now = await LocalNotifications.checkPermissions();
@@ -80,48 +83,12 @@ async function localizeChannels() {
   }
 }
 
-// Is the snack nudge on? An explicit choice wins; otherwise it defaults ON only for people who are gaining.
-export const snacksOn = (prefs, goalDirection) => (typeof prefs.snacks === 'boolean' ? prefs.snacks : goalDirection === 'gain');
-
-// Pure planner: which one-off notifications to schedule from `now`. No Capacitor calls, so it can be tested.
-// Lapse taper, where idle = awayDays + d for the future day d: under 3 idle days the normal schedule; 3-6 one
-// gentle midday hello a day; 7-60 one a week; beyond 60 nothing. The hello never mentions missed days.
-export function buildSchedule({ prefs, times, bedtime, loggedTodayTypes = [], awayDays = 0, goalDirection = null, now = new Date() }) {
-  const list = [];
-  const snacks = snacksOn(prefs, goalDirection);
-  for (let d = 0; d < DAYS; d++) {
-    const idle = awayDays + d;
-    if (idle > IDLE_STOP) break;
-    const day = new Date(now);
-    day.setDate(now.getDate() + d);
-    const add = (slot, hhmm, kind, msg, extra) => {
-      if (!hhmm) return;
-      const [h, m] = hhmm.split(':').map(Number);
-      const at = new Date(day);
-      at.setHours(h, m || 0, 0, 0);
-      if (at <= now) return;
-      list.push({ id: idFor(day, slot), title: msg.title, body: msg.body, schedule: { at, allowWhileIdle: true }, ...KIND[kind], smallIcon: 'ic_stat_sloth', extra });
-    };
-
-    if (idle >= 3) {
-      const anyOn = prefs.meals || prefs.bedtime || prefs.water || snacks; // all reminders off means none, hello included
-      if (anyOn && (idle <= 6 || (idle - 7) % 7 === 0)) add(9, COMEBACK_TIME, 'comeback', pickMessage('comeback', day), { open: 'home' });
-      continue;
-    }
-    if (prefs.meals) {
-      MEALS.forEach((meal, slot) => {
-        if (d === 0 && loggedTodayTypes.includes(meal.type)) return; // already fed today
-        add(slot, times[meal.idx], 'meal', pickMessage(meal.type === 'morning' ? 'breakfast' : meal.type, day), { open: 'feed' });
-      });
-    }
-    if (snacks) SNACK_TIMES.forEach((hhmm, i) => add(7 + i, hhmm, 'meal', pickMessage('snack', day, i), { open: 'feed' }));
-    if (prefs.bedtime) add(3, bedtime, 'bedtime', pickMessage('bedtime', day), { open: 'home' });
-    if (prefs.water) WATER_TIMES.forEach((hhmm, i) => add(4 + i, hhmm, 'water', pickMessage('water', day, i), { open: 'home' }));
-  }
-  return list;
+// The planner lives in reminderPlan.js (pure, tested); this wrapper adds the app-language renderer and channels.
+export function buildSchedule(opts) {
+  return planSchedule({ render, kinds: KIND, ...opts });
 }
 
-export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [], { awayDays = 0, goalDirection = null } = {}) {
+export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [], { awayDays = 0, goalDirection = null, history = null } = {}) {
   if (!isNativeApp()) return;
   if (!(await ensurePermission())) return;
   await localizeChannels();
@@ -132,7 +99,14 @@ export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [
   }
 
   const times = Array.isArray(mealTimes) && mealTimes.length ? mealTimes : DEFAULT_MEAL_TIMES;
-  const list = buildSchedule({ prefs: getReminderPrefs(), times, bedtime, loggedTodayTypes, awayDays, goalDirection });
+  const prefs = getReminderPrefs();
+  const list = buildSchedule({
+    prefs, times, bedtime, loggedTodayTypes, awayDays, goalDirection,
+    smart: prefs.smartTiming !== false,
+    saga: prefs.saga !== false,
+    learned: history ? learnMealTimes(history, times) : null,
+    reaction: history ? yesterdayReaction(history) : null,
+  });
 
   if (list.length) {
     await LocalNotifications.schedule({ notifications: list });
@@ -149,15 +123,21 @@ export async function syncReminders({ mealTimes, bedtime }, loggedTodayTypes = [
 export async function refreshReminders() {
   if (!isNativeApp()) return;
   try {
-    const [settings, dash] = await Promise.all([
+    const [settingsRes, dashRes, histRes] = await Promise.allSettled([
       api('/api/settings').then((r) => r.json()),
       api('/api/dashboard').then((r) => r.json()),
+      api('/api/history?days=14').then((r) => r.json()),
     ]);
+    if (settingsRes.status !== 'fulfilled') throw settingsRes.reason;
+    if (dashRes.status !== 'fulfilled') throw dashRes.reason;
+    const settings = settingsRes.value;
+    const dash = dashRes.value;
+    const history = histRes.status === 'fulfilled' && Array.isArray(histRes.value?.days) ? histRes.value : null; // falls back to the settings times
     setSlothName(settings.slothName);
     await syncReminders(
       { mealTimes: settings.mealTimesJson, bedtime: settings.bedtimeReminderTime },
       dash.loggedMealTypes || [],
-      { awayDays: dash.awayDays || 0, goalDirection: dash.goalDirection || null }
+      { awayDays: dash.awayDays || 0, goalDirection: dash.goalDirection || null, history }
     );
   } catch (err) {
     console.warn('Could not refresh reminders:', err);
@@ -190,7 +170,7 @@ export async function sendTestReminder() {
   } catch {
     /* nothing pending */
   }
-  const msg = pickMessage('test', new Date(), Math.floor(Math.random() * 100));
+  const msg = pick('test', new Date(), Math.floor(Math.random() * 100), render);
   await LocalNotifications.schedule({
     notifications: [{
       id: 99,

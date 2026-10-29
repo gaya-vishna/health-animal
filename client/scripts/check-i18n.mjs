@@ -25,6 +25,28 @@ for (const file of files) {
 
 const missing = [...used].filter((key) => he[key] === undefined);
 console.log(`${used.size} translated strings in use, ${Object.keys(he).length} Hebrew entries.`);
+
+// Reminder copy lives in pure-data pools (rendered through t() at runtime, not literal t('...') calls).
+const { POOLS, LUCKY, REACTIONS, ARCS } = await import('../src/utils/reminderPools.js');
+const groups = {
+  POOLS: Object.values(POOLS).flat(),
+  LUCKY,
+  REACTIONS: Object.values(REACTIONS).flat(),
+  ARCS: ARCS.flatMap((a) => a.episodes),
+};
+const pool = new Set(["{name}'s Week · {n}/7"]);
+for (const [name, entries] of Object.entries(groups)) {
+  const set = new Set();
+  for (const e of entries) {
+    set.add(e.title);
+    set.add(e.body);
+  }
+  set.forEach((s) => pool.add(s));
+  console.log(`  ${name}: ${entries.length} entries, ${set.size} distinct strings`);
+}
+console.log(`${pool.size} reminder strings checked (incl. the saga title).`);
+const poolMissing = [...pool].filter((key) => he[key] === undefined);
+missing.push(...poolMissing);
 if (missing.length) {
   console.log(`Missing Hebrew for ${missing.length}:`);
   missing.forEach((k) => console.log('  - ' + k));

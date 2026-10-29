@@ -173,7 +173,10 @@ export default function SettingsView() {
   }
 
   const goalDir = goalDirectionOf(currentWeight, goalWeight);
-  const prefOn = (key) => (key === 'snacks' ? snacksOn(prefs, goalDir) : !!prefs[key]);
+  const DEFAULT_ON = ['smartTiming', 'saga'];
+  const prefOn = (key) => (key === 'snacks'
+    ? snacksOn(prefs, goalDir)
+    : DEFAULT_ON.includes(key) ? prefs[key] !== false : !!prefs[key]);
 
   function togglePref(key) {
     const next = { ...prefs, [key]: !prefOn(key) };
@@ -671,7 +674,7 @@ export default function SettingsView() {
           <div className="pt-3 border-t border-[#3b2011] space-y-2.5">
             {native ? (
               <>
-                {[['meals', 'Meal reminders'], ['bedtime', 'Bedtime wind-down'], ['water', 'Water breaks (11:00, 14:00, 17:00)'], ['snacks', 'Snack nudges (11:00, 16:30)']].map(([key, name]) => (
+                {[['meals', 'Meal reminders'], ['bedtime', 'Bedtime wind-down'], ['water', 'Water breaks (11:00, 14:00, 17:00)'], ['snacks', 'Snack nudges (11:00, 16:30)'], ['smartTiming', 'Smart timing (learns your usual meal times)'], ['saga', "{name}'s Week: a bedtime story"]].map(([key, name]) => (
                   <button
                     key={key}
                     type="button"
@@ -680,7 +683,7 @@ export default function SettingsView() {
                     onClick={() => togglePref(key)}
                     className="w-full flex items-center justify-between gap-3 py-1.5 cursor-pointer"
                   >
-                    <span className="text-[10px] font-pixel text-amber-100 text-start">{t(name)}</span>
+                    <span className="text-[10px] font-pixel text-amber-100 text-start">{t(name, { name: savedName })}</span>
                     <span className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${prefOn(key) ? 'bg-emerald-600' : 'bg-[#3a2212]'}`}>
                       <span className={`absolute top-0.5 start-0.5 w-5 h-5 rounded-full bg-amber-100 transition-transform ${prefOn(key) ? 'translate-x-5 rtl:-translate-x-5' : ''}`} />
                     </span>
