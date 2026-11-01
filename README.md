@@ -236,6 +236,8 @@ Build your own APK (there is no published release); see [mobile/README.md](mobil
 - On the phone, your data stays on the phone. Android's cloud backup and device transfer are turned **off**
   for the app, so use **Backup to file** in Settings and keep the file somewhere safe.
 - With your own key, food text and photos go straight to Google Gemini. With a server, they go to your server and then to Gemini.
+  Only the meal being estimated is sent, never your weight, goals or history. On free Gemini keys Google may use
+  submitted content to improve its products; use a paid key or the offline estimator if that matters to you.
 - The Gemini key you paste in the app stays on the phone and is excluded from backups.
 - Web mode: optional password (`REQUIRE_PASSWORD=true` makes it mandatory). Keep your server on a private
   network or your own VPN, never on the public internet. `HOST` and `CORS_ORIGINS` control who can connect.
